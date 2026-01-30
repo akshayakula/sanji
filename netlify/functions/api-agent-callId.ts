@@ -1,37 +1,39 @@
-import { NextRequest, NextResponse } from "next/server";
+import type { Handler } from "@netlify/functions";
+import { jsonResponse } from "./utils";
 
 const VAPI_API_KEY = process.env.VAPI_API_KEY || "";
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: Promise<{ callId: string }> }
-) {
-  const { callId } = await params;
+function getCallIdFromPath(path: string): string | null {
+  // Path may be /api/agent/:callId or /.netlify/functions/api-agent-callId/:callId
+  const match = path.match(/(?:\/api\/agent\/|api-agent-callId\/)([^/]+)/);
+  return match ? match[1] : null;
+}
 
-  if (!VAPI_API_KEY) {
-    return NextResponse.json({ error: "VAPI not configured" }, { status: 500 });
+export const handler: Handler = async (event) => {
+  if (event.httpMethod !== "GET") {
+    return jsonResponse({ error: "Method not allowed" }, 405);
   }
-
+  const callId = getCallIdFromPath(event.path) || event.path.split("/").pop() || "";
+  if (!callId) {
+    return jsonResponse({ error: "callId required" }, 400);
+  }
+  if (!VAPI_API_KEY) {
+    return jsonResponse({ error: "VAPI not configured" }, 500);
+  }
   try {
     const response = await fetch(`https://api.vapi.ai/call/${callId}`, {
-      headers: {
-        Authorization: `Bearer ${VAPI_API_KEY}`,
-      },
+      headers: { Authorization: `Bearer ${VAPI_API_KEY}` },
     });
-
     if (!response.ok) {
       const err = await response.text();
       console.error("VAPI get call error:", response.status, err);
-      return NextResponse.json({ error: "Failed to get call" }, { status: 502 });
+      return jsonResponse({ error: "Failed to get call" }, 502);
     }
-
     const data = await response.json();
-
     const vapiStatus = data.status;
     const endedReason = data.endedReason;
     const analysis = data.analysis;
 
-    // More granular status mapping
     let appStatus: string;
     let message: string | undefined;
 
@@ -55,7 +57,6 @@ export async function GET(
         appStatus = "no_answer";
         message = "Reached voicemail";
       } else if (!analysis) {
-        // Call ended but analysis still processing
         appStatus = "analyzing";
         message = "Analyzing call result...";
       } else {
@@ -79,7 +80,7 @@ export async function GET(
       message = "Initiating call...";
     }
 
-    return NextResponse.json({
+    return jsonResponse({
       callId,
       vapiStatus,
       status: appStatus,
@@ -88,6 +89,6 @@ export async function GET(
     });
   } catch (err) {
     console.error("VAPI poll error:", err);
-    return NextResponse.json({ error: "Failed to poll call" }, { status: 500 });
+    return jsonResponse({ error: "Failed to poll call" }, 500);
   }
-}
+};

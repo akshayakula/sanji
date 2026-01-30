@@ -1,45 +1,39 @@
-import { NextRequest, NextResponse } from "next/server";
+import type { Handler } from "@netlify/functions";
+import { jsonResponse, parseBody } from "./utils";
 
 const VAPI_API_KEY = process.env.VAPI_API_KEY || "";
 const VAPI_ASSISTANT_ID = process.env.VAPI_ASSISTANT_ID || "";
 const VAPI_PHONE_NUMBER_ID = process.env.VAPI_PHONE_NUMBER_ID || "";
 
-export async function POST(req: NextRequest) {
+export const handler: Handler = async (event) => {
+  if (event.httpMethod !== "POST") {
+    return jsonResponse({ error: "Method not allowed" }, 405);
+  }
   if (!VAPI_API_KEY || !VAPI_ASSISTANT_ID) {
-    return NextResponse.json(
-      { error: "VAPI not configured" },
-      { status: 500 }
+    return jsonResponse({ error: "VAPI not configured" }, 500);
+  }
+  const body = parseBody<{
+    phoneNumber?: string;
+    orgName?: string;
+    itemsSummary?: string;
+    phoneNumberId?: string;
+  }>(event.body);
+  const phoneNumber = body?.phoneNumber;
+  const orgName = body?.orgName;
+  const itemsSummary = body?.itemsSummary;
+  const phoneNumberId = body?.phoneNumberId;
+
+  if (!phoneNumber || !orgName || !itemsSummary) {
+    return jsonResponse(
+      { error: "Missing phoneNumber, orgName, or itemsSummary" },
+      400
     );
   }
-
-  let phoneNumber: string;
-  let orgName: string;
-  let itemsSummary: string;
-  let phoneNumberId: string | undefined;
-
-  try {
-    const body = await req.json();
-    phoneNumber = body.phoneNumber;
-    orgName = body.orgName;
-    itemsSummary = body.itemsSummary;
-    phoneNumberId = body.phoneNumberId;
-
-    if (!phoneNumber || !orgName || !itemsSummary) {
-      return NextResponse.json(
-        { error: "Missing phoneNumber, orgName, or itemsSummary" },
-        { status: 400 }
-      );
-    }
-
-    // Skip orgs without phone numbers
-    if (!phoneNumber || phoneNumber.length < 8) {
-      return NextResponse.json(
-        { error: "No valid phone number for this organization" },
-        { status: 400 }
-      );
-    }
-  } catch {
-    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  if (!phoneNumber || phoneNumber.length < 8) {
+    return jsonResponse(
+      { error: "No valid phone number for this organization" },
+      400
+    );
   }
 
   const systemPrompt = `You are a friendly, professional phone caller from Dashwill — a food donation logistics platform that connects surplus food donors with shelters, food banks, and community kitchens.
@@ -73,81 +67,69 @@ ${itemsSummary}
 
   const firstMessage = `Hi there! My name is Dash and I'm calling from Dashwill, a food donation service. We have a donor nearby with ${itemsSummary} available to donate today. Would your organization be able to accept this donation?`;
 
-  try {
-    const callBody: Record<string, unknown> = {
-      assistantId: VAPI_ASSISTANT_ID,
-      assistantOverrides: {
-        firstMessage,
-        // Voice settings for natural conversation
-        voice: {
-          provider: "11labs",
-          voiceId: "21m00Tcm4TlvDq8ikWAM", // "Rachel" — warm, professional female voice
-          stability: 0.6,
-          similarityBoost: 0.8,
-          speed: 1.05, // slightly faster for natural pacing
-        },
-        model: {
-          provider: "openai",
-          model: "gpt-4o-mini", // faster responses, lower latency
-          temperature: 0.7, // natural conversational variation
-          maxTokens: 200, // keep responses concise
-          messages: [
-            {
-              role: "system",
-              content: systemPrompt,
-            },
-          ],
-        },
-        // Silence and timing settings for low latency
-        silenceTimeoutSeconds: 20, // hang up after 20s silence
-        maxDurationSeconds: 120, // max 2 min call
-        backgroundSound: "off",
-        // Analysis plan for structured outcome extraction
-        analysisPlan: {
-          structuredDataPrompt: `Analyze the call transcript and determine:
+  const callBody: Record<string, unknown> = {
+    assistantId: VAPI_ASSISTANT_ID,
+    assistantOverrides: {
+      firstMessage,
+      voice: {
+        provider: "11labs",
+        voiceId: "21m00Tcm4TlvDq8ikWAM",
+        stability: 0.6,
+        similarityBoost: 0.8,
+        speed: 1.05,
+      },
+      model: {
+        provider: "openai",
+        model: "gpt-4o-mini",
+        temperature: 0.7,
+        maxTokens: 200,
+        messages: [{ role: "system", content: systemPrompt }],
+      },
+      silenceTimeoutSeconds: 20,
+      maxDurationSeconds: 120,
+      backgroundSound: "off",
+      analysisPlan: {
+        structuredDataPrompt: `Analyze the call transcript and determine:
 1. outcome: Did the organization accept ("accepted"), decline ("declined"), or did it go to voicemail ("voicemail")?
 2. message: What did they say? Include any delivery instructions they mentioned.
 
 If the person said yes, agreed, or indicated they can accept → "accepted"
 If they said no, can't accept, full, closed → "declined"
 If it was a recorded message or voicemail → "voicemail"`,
-          structuredDataSchema: {
-            type: "object",
-            properties: {
-              outcome: {
-                type: "string",
-                enum: ["accepted", "declined", "voicemail"],
-              },
-              message: {
-                type: "string",
-                description: "Summary of org response including any delivery instructions",
-              },
+        structuredDataSchema: {
+          type: "object",
+          properties: {
+            outcome: {
+              type: "string",
+              enum: ["accepted", "declined", "voicemail"],
             },
-            required: ["outcome"],
+            message: {
+              type: "string",
+              description: "Summary of org response including any delivery instructions",
+            },
           },
-          successEvaluationPrompt: "Did the organization agree to accept the food donation? Answer 'true' if yes, 'false' if no or voicemail.",
+          required: ["outcome"],
         },
-        // Transcription settings
-        transcriber: {
-          provider: "deepgram",
-          model: "nova-2",
-          language: "en",
-        },
+        successEvaluationPrompt: "Did the organization agree to accept the food donation? Answer 'true' if yes, 'false' if no or voicemail.",
       },
-      customer: {
-        number: phoneNumber,
+      transcriber: {
+        provider: "deepgram",
+        model: "nova-2",
+        language: "en",
       },
-    };
+    },
+    customer: { number: phoneNumber },
+  };
 
-    // Always set the phone number to call FROM
-    callBody.phoneNumberId = phoneNumberId || VAPI_PHONE_NUMBER_ID;
-    if (!callBody.phoneNumberId) {
-      return NextResponse.json(
-        { error: "No VAPI phone number configured. Set VAPI_PHONE_NUMBER_ID." },
-        { status: 500 }
-      );
-    }
+  callBody.phoneNumberId = phoneNumberId || VAPI_PHONE_NUMBER_ID;
+  if (!callBody.phoneNumberId) {
+    return jsonResponse(
+      { error: "No VAPI phone number configured. Set VAPI_PHONE_NUMBER_ID." },
+      500
+    );
+  }
 
+  try {
     const response = await fetch("https://api.vapi.ai/call", {
       method: "POST",
       headers: {
@@ -156,26 +138,20 @@ If it was a recorded message or voicemail → "voicemail"`,
       },
       body: JSON.stringify(callBody),
     });
-
     const data = await response.json();
-
     if (!response.ok) {
       console.error("VAPI create call error:", response.status, JSON.stringify(data));
-      return NextResponse.json(
+      return jsonResponse(
         { error: "Failed to create call", details: data },
-        { status: 502 }
+        502
       );
     }
-
-    return NextResponse.json({
+    return jsonResponse({
       callId: data.id,
       status: data.status || "queued",
     });
   } catch (err) {
     console.error("VAPI call error:", err);
-    return NextResponse.json(
-      { error: "Failed to initiate call" },
-      { status: 500 }
-    );
+    return jsonResponse({ error: "Failed to initiate call" }, 500);
   }
-}
+};

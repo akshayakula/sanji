@@ -1,26 +1,20 @@
-import { NextRequest, NextResponse } from "next/server";
+import type { Handler } from "@netlify/functions";
+import { jsonResponse, parseBody } from "./utils";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 
-export async function POST(req: NextRequest) {
+export const handler: Handler = async (event) => {
+  if (event.httpMethod !== "POST") {
+    return jsonResponse({ error: "Method not allowed" }, 405);
+  }
   if (!OPENAI_API_KEY) {
-    return NextResponse.json(
-      { error: "OpenAI API key not configured" },
-      { status: 500 }
-    );
+    return jsonResponse({ error: "OpenAI API key not configured" }, 500);
   }
-
-  let imageBase64: string;
-  try {
-    const body = await req.json();
-    imageBase64 = body.image; // expects a data URL like "data:image/jpeg;base64,..."
-    if (!imageBase64) {
-      return NextResponse.json({ error: "No image provided" }, { status: 400 });
-    }
-  } catch {
-    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  const body = parseBody<{ image?: string }>(event.body);
+  const imageBase64 = body?.image;
+  if (!imageBase64) {
+    return jsonResponse({ error: "No image provided" }, 400);
   }
-
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -67,46 +61,37 @@ Be precise with quantities. If you see a 6-pack of water, that's quantity 1, uni
         temperature: 0.2,
       }),
     });
-
     if (!response.ok) {
       const err = await response.text();
       console.error("OpenAI API error:", response.status, err);
-      return NextResponse.json(
-        { error: "Vision API failed" },
-        { status: 502 }
-      );
+      return jsonResponse({ error: "Vision API failed" }, 502);
     }
-
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content?.trim() || "[]";
-
-    // Parse the JSON from the response, stripping any markdown fences
     let cleaned = content;
     if (cleaned.startsWith("```")) {
       cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
     }
-
     const parsed = JSON.parse(cleaned);
-
-    // Map to our DonationItem shape with generated IDs
     const items = Array.isArray(parsed)
-      ? parsed.map((item: { name: string; quantity: number; unit: string; category: string }, i: number) => ({
-          id: `item-${i + 1}`,
-          name: item.name || "Unknown Item",
-          quantity: item.quantity || 1,
-          unit: item.unit || "pieces",
-          category: ["food", "beverage", "supply", "other"].includes(item.category)
-            ? item.category
-            : "other",
-        }))
+      ? parsed.map(
+          (
+            item: { name: string; quantity: number; unit: string; category: string },
+            i: number
+          ) => ({
+            id: `item-${i + 1}`,
+            name: item.name || "Unknown Item",
+            quantity: item.quantity || 1,
+            unit: item.unit || "pieces",
+            category: ["food", "beverage", "supply", "other"].includes(item.category)
+              ? item.category
+              : "other",
+          })
+        )
       : [];
-
-    return NextResponse.json({ items });
+    return jsonResponse({ items });
   } catch (err) {
     console.error("Vision processing error:", err);
-    return NextResponse.json(
-      { error: "Failed to process image" },
-      { status: 500 }
-    );
+    return jsonResponse({ error: "Failed to process image" }, 500);
   }
-}
+};

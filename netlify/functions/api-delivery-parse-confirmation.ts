@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
+import type { Handler } from "@netlify/functions";
+import { jsonResponse, parseBody } from "./utils";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-
 const SYSTEM_PROMPT = `You are parsing an Uber order/delivery confirmation page (HTML). Extract the key details into a short, user-friendly summary. Return ONLY valid JSON with this shape (use null for missing fields):
 {
   "pickup": "pickup address or location",
@@ -13,25 +13,17 @@ const SYSTEM_PROMPT = `You are parsing an Uber order/delivery confirmation page 
 }
 Strip HTML tags and keep values concise. If the page is not an Uber confirmation, set summary to a brief message saying so.`;
 
-export async function POST(req: Request) {
+export const handler: Handler = async (event) => {
+  if (event.httpMethod !== "POST") {
+    return jsonResponse({ error: "Method not allowed" }, 405);
+  }
   if (!OPENAI_API_KEY) {
-    return NextResponse.json(
-      { error: "OPENAI_API_KEY not configured" },
-      { status: 500 }
-    );
+    return jsonResponse({ error: "OPENAI_API_KEY not configured" }, 500);
   }
-  let body: { html?: string };
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
+  const body = parseBody<{ html?: string }>(event.body);
   const html = body?.html;
   if (typeof html !== "string" || !html.trim()) {
-    return NextResponse.json(
-      { error: "Missing or empty html in body" },
-      { status: 400 }
-    );
+    return jsonResponse({ error: "Missing or empty html in body" }, 400);
   }
   try {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -57,24 +49,21 @@ export async function POST(req: Request) {
       error?: { message?: string };
     };
     if (!res.ok) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: data?.error?.message || "OpenAI request failed" },
-        { status: res.status }
+        res.status
       );
     }
     const raw = data?.choices?.[0]?.message?.content;
     if (!raw) {
-      return NextResponse.json(
-        { error: "No content in OpenAI response" },
-        { status: 502 }
-      );
+      return jsonResponse({ error: "No content in OpenAI response" }, 502);
     }
     const parsed = JSON.parse(raw) as Record<string, unknown>;
-    return NextResponse.json(parsed);
+    return jsonResponse(parsed);
   } catch (err) {
-    return NextResponse.json(
+    return jsonResponse(
       { error: err instanceof Error ? err.message : "Parse failed" },
-      { status: 500 }
+      500
     );
   }
-}
+};

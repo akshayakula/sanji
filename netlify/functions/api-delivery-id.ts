@@ -1,12 +1,18 @@
-import { NextResponse } from "next/server";
+import type { Handler } from "@netlify/functions";
+import { jsonResponse } from "./utils";
 
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id } = await params;
+function getIdFromPath(path: string): string | null {
+  // Path may be /api/delivery/:id or /.netlify/functions/api-delivery-id/:id
+  const match = path.match(/(?:\/api\/delivery\/|api-delivery-id\/)([^/]+)/);
+  return match ? match[1] : null;
+}
 
-  return NextResponse.json({
+export const handler: Handler = async (event) => {
+  if (event.httpMethod !== "GET") {
+    return jsonResponse({ error: "Method not allowed" }, 405);
+  }
+  const id = getIdFromPath(event.path) || event.path.split("/").pop() || "unknown";
+  return jsonResponse({
     id,
     status: "in_transit",
     driverName: "Marcus T.",
@@ -23,4 +29,4 @@ export async function GET(
     createdAt: new Date(Date.now() - 600000).toISOString(),
     updatedAt: new Date().toISOString(),
   });
-}
+};

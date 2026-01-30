@@ -1,6 +1,57 @@
 [build]
   command = "npm run build"
   publish = ".next"
+  functions = "netlify/functions"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+# Rewrite /api/* to Netlify functions so existing frontend URLs work
+[[redirects]]
+  from = "/api/orgs"
+  to = "/.netlify/functions/api-orgs"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/delivery"
+  to = "/.netlify/functions/api-delivery"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/delivery/parse-confirmation"
+  to = "/.netlify/functions/api-delivery-parse-confirmation"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/delivery/:id"
+  to = "/.netlify/functions/api-delivery-id/:id"
+  status = 200
+  force = true
+
+# All /api/local/* requests proxy to NGROK_URL (local server); :splat = path after /api/local/
+[[redirects]]
+  from = "/api/local/*"
+  to = "/.netlify/functions/api-local-proxy?path=:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/agent"
+  to = "/.netlify/functions/api-agent"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/agent/:callId"
+  to = "/.netlify/functions/api-agent-callId/:callId"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/vision"
+  to = "/.netlify/functions/api-vision"
+  status = 200
+  force = true

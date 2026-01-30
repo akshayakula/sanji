@@ -133,10 +133,7 @@ export default function HomePage() {
                     {/* Mini nav */}
                     <div className="flex items-center gap-2 mb-4">
                       <div className="h-6 w-6 rounded-md gradient-teal flex items-center justify-center">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                          <path d="M2 17l10 5 10-5" />
-                        </svg>
+                        <Truck className="h-3.5 w-3.5 text-white" strokeWidth={2.5} />
                       </div>
                       <span className="text-xs font-semibold text-gray-900">Dashwill</span>
                     </div>
@@ -376,10 +373,7 @@ export default function HomePage() {
         <div className="mx-auto flex max-w-6xl flex-col md:flex-row items-center justify-between gap-4 px-5">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-md gradient-teal">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                <path d="M2 17l10 5 10-5" />
-              </svg>
+              <Truck className="h-4 w-4 text-white" strokeWidth={2.5} />
             </div>
             <span className="text-sm font-semibold text-gray-900">Dashwill</span>
           </div>

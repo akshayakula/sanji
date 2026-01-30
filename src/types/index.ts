@@ -14,6 +14,21 @@ export interface DonorLocation {
   pickupInstructions?: string;
 }
 
+export interface FoodReliefPartner {
+  id: string;
+  name: string;
+  type: "regional_food_bank" | "meal_production_nonprofit" | "food_pantry" | "meal_service" | "community_micro_pantry";
+  contact: { phone: string; email: string };
+  address?: { street: string; city: string; state: string; zip: string };
+  pickup_capabilities: {
+    accepts_same_day_surplus: boolean;
+    max_weight_lbs: number;
+    preferred_items: string[];
+  };
+  hours?: { mon_fri?: string };
+  notes?: string;
+}
+
 export interface Organization {
   id: string;
   name: string;

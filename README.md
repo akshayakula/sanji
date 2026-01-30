@@ -28,7 +28,7 @@ Dashwill is a "donate-by-photo" logistics platform that turns surplus food and s
 - **Photo parsing**: A vision model (e.g., GPT-4V, Google Vision) analyzes the uploaded image and returns structured item data — name, quantity, unit, category. The donor can edit results before confirming.
 - **Calling agent**: An AI voice agent (e.g., Bland.ai, Retell) calls nearby organizations sequentially to ask if they can accept the specific items. It handles no-answers, declines, and acceptances.
 
-Both are currently mocked with realistic responses via Next.js Route Handlers.
+Both are implemented via **Netlify Functions** (serverless); the frontend calls the same `/api/*` URLs, which Netlify rewrites to the functions.
 
 ## Tech Stack
 
@@ -42,7 +42,7 @@ Both are currently mocked with realistic responses via Next.js Route Handlers.
 | Motion | Framer Motion |
 | Forms | React Hook Form + Zod (ready to wire) |
 | Icons | Lucide React |
-| APIs | Mocked via Next.js Route Handlers |
+| APIs | Netlify Functions (serverless) |
 
 ## Local Dev Setup
 
@@ -63,6 +63,8 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+**API routes** (`/api/*`) are implemented as Netlify Functions. For local API support, run `netlify dev` instead of `npm run dev` so redirects and functions run locally.
 
 ## Environment Variables
 
@@ -86,13 +88,7 @@ src/
 │   │   ├── page.tsx                # AI calling agent status
 │   │   └── result/page.tsx         # Accepted org + dispatch
 │   ├── track/[deliveryId]/page.tsx # Live delivery tracking
-│   └── api/
-│       ├── vision/route.ts         # POST - AI photo parsing
-│       ├── orgs/route.ts           # POST - Nearby orgs
-│       ├── agent/route.ts          # POST - AI calling agent
-│       └── delivery/
-│           ├── route.ts            # POST - Create delivery
-│           └── [id]/route.ts       # GET  - Delivery status
+│   └── api/                        # (empty; APIs are Netlify Functions)
 ├── components/
 │   ├── navbar.tsx
 │   └── ui/                         # shadcn/ui + MagicUI components
@@ -106,29 +102,24 @@ src/
     └── index.ts                    # TypeScript interfaces
 ```
 
-## Mock API Routes
+## API (Netlify Functions)
+
+APIs live in `netlify/functions/` and are exposed at `/api/*` via redirects in `netlify.toml`.
 
 | Route | Method | Returns |
 |-------|--------|---------|
-| `/api/vision` | POST | Detected items array (5 items with name, quantity, unit, category) |
-| `/api/orgs` | POST | 5 nearby organizations with distance, type, hours |
-| `/api/agent` | POST | Call result per org: `accepted`, `declined`, or `no_answer` |
+| `/api/vision` | POST | Detected items array (name, quantity, unit, category) |
+| `/api/orgs` | POST | Nearby food relief orgs (body: `{ lat, lng }`) |
+| `/api/agent` | POST | Start VAPI call (body: `phoneNumber`, `orgName`, `itemsSummary`) |
+| `/api/agent/[callId]` | GET | Call status / outcome |
 | `/api/delivery` | POST | New delivery ID + status |
-| `/api/delivery/[id]` | GET | Full delivery object with driver, route, items |
+| `/api/delivery/[id]` | GET | Full delivery object |
+| `/api/delivery/parse-confirmation` | POST | Parse Uber confirmation HTML (body: `html`) |
+| `/api/local/*` | GET/POST | Proxy to NGROK_URL (local server). All ngrok endpoints: `pickup-dropoff`, `confirm-delivery`, `content`, `health`, `browser`, `navigate`, `click`, `type`, `pickup`, `dropoff`, `screenshot`, `evaluate`, `pages`, `pages/select`, `phone-and-meet`. Frontend calls `/api/local/...` only; NGROK_URL is set server-side. |
 
-All mock routes include realistic delays (800ms-2000ms) to simulate real API behavior.
+## Deployment (Netlify)
 
-## Deployment (Vercel)
-
-```bash
-# Install Vercel CLI
-npm i -g vercel
-
-# Deploy
-vercel
-```
-
-Set environment variables in the Vercel dashboard. The app works out of the box with mocked APIs — no backend required.
+The app is configured for Netlify: `netlify.toml` sets the build command, publish directory, and redirects so `/api/*` hits the Netlify Functions. Set environment variables (e.g. `OPENAI_API_KEY`, `VAPI_*`, `NGROK_URL`) in the Netlify dashboard.
 
 ## Roadmap
 
