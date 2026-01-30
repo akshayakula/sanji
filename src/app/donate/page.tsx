@@ -47,7 +47,11 @@ export default function DonatePage() {
     if (!imagePreview) return;
     setAnalyzing(true);
     try {
-      const res = await fetch("/api/vision", { method: "POST" });
+      const res = await fetch("/api/vision", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: imagePreview }),
+      });
       const data = await res.json();
       setItems(data.items);
       setAnalyzed(true);
