@@ -81,8 +81,8 @@ export default function DonatePage() {
     if (!items.length || !address.trim()) return;
     const location: DonorLocation = {
       address: address.trim(),
-      lat: selectedPlace?.lat ?? 37.7849,
-      lng: selectedPlace?.lng ?? -122.4094,
+      lat: selectedPlace?.lat ?? 38.9072,
+      lng: selectedPlace?.lng ?? -77.0369,
       placeId: selectedPlace?.placeId,
     };
     setDonationState({
