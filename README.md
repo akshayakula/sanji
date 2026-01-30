@@ -1,8 +1,8 @@
-# PantryRun
+# Dashwill
 
-**Donate by photo. Delivered fast.**
+**Snap. Match. Deliver.**
 
-PantryRun is a "donate-by-photo" logistics platform that turns surplus food and supplies into deliveries to nearby shelters, community kitchens, and food banks — in under a minute.
+Dashwill is a "donate-by-photo" logistics platform that turns surplus food and supplies into deliveries to nearby shelters, community kitchens, and food banks — in under a minute.
 
 ## What It Does
 

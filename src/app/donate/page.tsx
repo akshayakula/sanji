@@ -2,14 +2,17 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Card } from "@/components/ui/card";
 import { BorderBeam } from "@/components/ui/border-beam";
 import { BlurFade } from "@/components/ui/blur-fade";
-import { Upload, Camera, MapPin, Loader2, X, ImageIcon } from "lucide-react";
+import {
+  Upload, Camera, MapPin, Loader2, X, ImageIcon, Sparkles, Package, ArrowRight,
+} from "lucide-react";
 import { setDonationState } from "@/lib/donation-store";
+import { DonationItem } from "@/types";
 
 export default function DonatePage() {
   const router = useRouter();
@@ -17,6 +20,8 @@ export default function DonatePage() {
   const [address, setAddress] = useState("");
   const [pickupInstructions, setPickupInstructions] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
+  const [analyzed, setAnalyzed] = useState(false);
+  const [items, setItems] = useState<DonationItem[]>([]);
   const [dragActive, setDragActive] = useState(false);
 
   const handleFile = useCallback((file: File) => {
@@ -37,56 +42,79 @@ export default function DonatePage() {
   );
 
   const handleAnalyze = async () => {
-    if (!imagePreview || !address.trim()) return;
+    if (!imagePreview) return;
     setAnalyzing(true);
-
     try {
       const res = await fetch("/api/vision", { method: "POST" });
       const data = await res.json();
-
-      setDonationState({
-        imagePreview,
-        items: data.items,
-        location: {
-          address: address.trim(),
-          lat: 37.7849,
-          lng: -122.4094,
-          pickupInstructions: pickupInstructions.trim() || undefined,
-        },
-        pickupInstructions: pickupInstructions.trim(),
-      });
-
-      router.push("/donate/review");
+      setItems(data.items);
+      setAnalyzed(true);
     } catch {
-      alert("Failed to analyze image. Please try again.");
+      alert("Failed to analyze image.");
     } finally {
       setAnalyzing(false);
     }
   };
 
+  const updateItemQty = (id: string, qty: number) => {
+    setItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, quantity: Math.max(1, qty) } : item))
+    );
+  };
+
+  const removeItem = (id: string) => {
+    setItems((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  const handleSubmit = () => {
+    if (!items.length || !address.trim()) return;
+    setDonationState({
+      imagePreview,
+      items,
+      location: {
+        address: address.trim(),
+        lat: 37.7849,
+        lng: -122.4094,
+        pickupInstructions: pickupInstructions.trim() || undefined,
+      },
+      pickupInstructions: pickupInstructions.trim(),
+    });
+    router.push("/donate/review");
+  };
+
+  const categoryIcons: Record<string, string> = {
+    food: "\U0001F37D\uFE0F",
+    beverage: "\U0001F964",
+    supply: "\U0001F4E6",
+    other: "\U0001F4CB",
+  };
+
   return (
-    <div className="mx-auto max-w-2xl px-4 py-12">
-      <BlurFade delay={0.1}>
-        <h1 className="text-3xl font-bold">Start a Donation</h1>
-        <p className="mt-2 text-muted-foreground">
-          Upload a photo of your items and tell us where to pick them up.
+    <div className="mx-auto max-w-5xl px-5 py-10 md:py-16">
+      {/* Header */}
+      <BlurFade delay={0.05}>
+        <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
+          Start a Donation
+        </h1>
+        <p className="mt-2 text-gray-500">
+          Snap a photo of extra food or supplies.
         </p>
       </BlurFade>
 
-      <div className="mt-8 space-y-6">
-        {/* Photo Upload */}
-        <BlurFade delay={0.2}>
-          <label className="text-sm font-medium">Photo of Items</label>
-          <div className="mt-2">
+      <div className="mt-8 grid gap-8 md:grid-cols-2">
+        {/* LEFT COLUMN: Upload + Items */}
+        <div className="space-y-5">
+          {/* Photo Upload / Preview */}
+          <BlurFade delay={0.1}>
             {!imagePreview ? (
               <div
                 onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
                 onDragLeave={() => setDragActive(false)}
                 onDrop={handleDrop}
-                className={`relative flex min-h-[220px] cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed transition-colors ${
+                className={`relative flex min-h-[280px] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all duration-300 ${
                   dragActive
-                    ? "border-emerald-500 bg-emerald-50"
-                    : "border-border hover:border-emerald-300 hover:bg-muted/50"
+                    ? "border-teal-500 bg-teal-50/50 scale-[1.01]"
+                    : "border-gray-200 hover:border-teal-300 hover:bg-gray-50/50"
                 }`}
               >
                 <input
@@ -99,87 +127,201 @@ export default function DonatePage() {
                     if (file) handleFile(file);
                   }}
                 />
-                <Upload className="mb-3 h-8 w-8 text-muted-foreground" />
-                <p className="font-medium">Drop your photo here</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  or click to browse — mobile camera works too
-                </p>
-                <div className="mt-3 flex gap-2">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-muted px-3 py-1 text-xs">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-50 mb-4">
+                  <Upload className="h-6 w-6 text-teal-600" />
+                </div>
+                <p className="font-semibold text-gray-900">Drag & Drop, upload from the gallery</p>
+                <p className="mt-1 text-sm text-gray-400">or use your camera</p>
+                <div className="mt-4 flex gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white border border-gray-200 px-3.5 py-1.5 text-xs font-medium text-gray-600 shadow-sm">
                     <Camera className="h-3 w-3" /> Camera
                   </span>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-muted px-3 py-1 text-xs">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white border border-gray-200 px-3.5 py-1.5 text-xs font-medium text-gray-600 shadow-sm">
                     <ImageIcon className="h-3 w-3" /> Gallery
                   </span>
                 </div>
               </div>
             ) : (
-              <Card className="relative overflow-hidden">
-                <BorderBeam size={200} duration={8} colorFrom="#10b981" colorTo="#059669" />
+              <div className="relative rounded-2xl overflow-hidden shadow-card-hover border border-gray-100">
+                <BorderBeam size={250} duration={8} colorFrom="#0D9488" colorTo="#14B8A6" />
                 <img
                   src={imagePreview}
                   alt="Preview"
-                  className="h-64 w-full rounded-lg object-cover"
+                  className="h-[280px] w-full object-cover"
                 />
                 <button
-                  onClick={() => setImagePreview(null)}
-                  className="absolute right-3 top-3 rounded-full bg-black/50 p-1.5 text-white hover:bg-black/70 transition-colors"
+                  onClick={() => { setImagePreview(null); setAnalyzed(false); setItems([]); }}
+                  className="absolute right-3 top-3 rounded-full bg-black/40 backdrop-blur-sm p-2 text-white hover:bg-black/60 transition-colors"
                 >
                   <X className="h-4 w-4" />
                 </button>
-              </Card>
+                {!analyzed && (
+                  <div className="absolute bottom-0 inset-x-0 p-4 bg-gradient-to-t from-black/50 to-transparent">
+                    <Button
+                      onClick={handleAnalyze}
+                      disabled={analyzing}
+                      className="w-full rounded-xl gradient-teal border-0 text-white h-11 font-semibold shadow-teal hover:opacity-90 transition-all"
+                    >
+                      {analyzing ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Analyzing...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="mr-2 h-4 w-4" />
+                          Analyze Photo
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
+              </div>
             )}
-          </div>
-        </BlurFade>
+          </BlurFade>
 
-        {/* Location */}
-        <BlurFade delay={0.3}>
-          <label className="text-sm font-medium">Pickup Address</label>
-          <div className="relative mt-2">
-            <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Enter your address..."
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-        </BlurFade>
-
-        {/* Pickup Instructions */}
-        <BlurFade delay={0.35}>
-          <label className="text-sm font-medium">
-            Pickup Instructions <span className="text-muted-foreground font-normal">(optional)</span>
-          </label>
-          <Textarea
-            placeholder="e.g., Ring buzzer #3, items are in the lobby..."
-            value={pickupInstructions}
-            onChange={(e) => setPickupInstructions(e.target.value)}
-            className="mt-2"
-            rows={3}
-          />
-        </BlurFade>
-
-        {/* Submit */}
-        <BlurFade delay={0.4}>
-          <Button
-            onClick={handleAnalyze}
-            disabled={!imagePreview || !address.trim() || analyzing}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 h-12 text-base"
-          >
-            {analyzing ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Analyzing photo...
-              </>
-            ) : (
-              <>
-                <Camera className="mr-2 h-4 w-4" />
-                Analyze Photo
-              </>
+          {/* Detected Items */}
+          <AnimatePresence>
+            {analyzed && items.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.4 }}
+                className="space-y-2.5"
+              >
+                <div className="flex items-center gap-2 text-sm font-semibold text-teal-700">
+                  <Package className="h-4 w-4" />
+                  Detected Items
+                </div>
+                {items.map((item, i) => (
+                  <motion.div
+                    key={item.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                    className="group flex items-center gap-3 rounded-xl bg-white border border-gray-100 p-3.5 shadow-sm hover:shadow-card-hover transition-all"
+                  >
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-50 text-base shrink-0">
+                      {categoryIcons[item.category] || "📋"}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-900 text-sm">{item.name}</p>
+                      <p className="text-xs text-gray-400">{item.unit}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={1}
+                        value={item.quantity}
+                        onChange={(e) => updateItemQty(item.id, parseInt(e.target.value) || 1)}
+                        className="w-14 rounded-lg border border-gray-200 px-2 py-1.5 text-center text-sm font-semibold text-gray-900 focus:border-teal-400 focus:ring-1 focus:ring-teal-400 outline-none"
+                      />
+                      <button
+                        onClick={() => removeItem(item.id)}
+                        className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400 transition-all"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </motion.div>
+                ))}
+              </motion.div>
             )}
-          </Button>
-        </BlurFade>
+          </AnimatePresence>
+        </div>
+
+        {/* RIGHT COLUMN: Location + Submit */}
+        <div className="space-y-5">
+          <BlurFade delay={0.15}>
+            <div className="rounded-2xl bg-white border border-gray-100 p-6 shadow-sm space-y-5">
+              <div>
+                <label className="text-sm font-semibold text-gray-900">Location</label>
+                <p className="text-xs text-gray-400 mt-0.5">Where should the courier pick up?</p>
+                <div className="relative mt-3">
+                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-teal-500" />
+                  <Input
+                    placeholder="Enter your address..."
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    className="pl-10 h-11 rounded-xl border-gray-200 focus:border-teal-400 focus:ring-teal-400"
+                  />
+                </div>
+              </div>
+
+              {/* Mock map area */}
+              <div className="rounded-xl bg-gradient-to-br from-teal-50 via-white to-teal-50/30 h-40 border border-teal-100/50 relative overflow-hidden">
+                <div className="absolute inset-0 opacity-40">
+                  <div className="absolute top-6 left-8 h-1.5 w-20 bg-teal-200 rounded" />
+                  <div className="absolute top-10 left-4 h-1 w-28 bg-teal-100 rounded" />
+                  <div className="absolute top-16 left-10 h-1 w-16 bg-teal-200 rounded" />
+                  <div className="absolute bottom-10 right-6 h-1.5 w-24 bg-teal-100 rounded" />
+                  <div className="absolute bottom-16 right-10 h-1 w-16 bg-teal-200 rounded" />
+                </div>
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+                  <div className="relative">
+                    <div className="h-8 w-8 rounded-full bg-teal-500 border-3 border-white shadow-lg flex items-center justify-center">
+                      <MapPin className="h-4 w-4 text-white" />
+                    </div>
+                    <div className="absolute inset-0 rounded-full bg-teal-400 animate-pulse-ring" />
+                  </div>
+                </div>
+                {address && (
+                  <div className="absolute bottom-3 left-3 right-3 rounded-lg bg-white/90 backdrop-blur-sm px-3 py-2 shadow-sm">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="h-3 w-3 text-teal-500 shrink-0" />
+                      <span className="text-xs text-gray-600 truncate">{address}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold text-gray-900">
+                  Pickup Instructions{" "}
+                  <span className="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <Textarea
+                  placeholder="e.g., Ring buzzer #3, items in lobby..."
+                  value={pickupInstructions}
+                  onChange={(e) => setPickupInstructions(e.target.value)}
+                  className="mt-2 rounded-xl border-gray-200 focus:border-teal-400 focus:ring-teal-400 resize-none"
+                  rows={3}
+                />
+              </div>
+
+              {/* Distance badge */}
+              {address && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="flex items-center gap-3"
+                >
+                  <div className="flex items-center gap-1.5 rounded-full bg-teal-50 border border-teal-200 px-3 py-1">
+                    <MapPin className="h-3 w-3 text-teal-600" />
+                    <span className="text-xs font-medium text-teal-700">~ 30 m accuracy</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    <span className="text-xs font-medium text-emerald-700">Available</span>
+                  </div>
+                </motion.div>
+              )}
+            </div>
+          </BlurFade>
+
+          {/* Submit */}
+          <BlurFade delay={0.2}>
+            <button
+              onClick={handleSubmit}
+              disabled={!analyzed || !items.length || !address.trim()}
+              className="w-full h-13 rounded-2xl gradient-teal text-white font-semibold text-base shadow-teal disabled:opacity-40 disabled:shadow-none hover:opacity-90 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+            >
+              Continue to Review
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </BlurFade>
+        </div>
       </div>
     </div>
   );

@@ -2,20 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { BorderBeam } from "@/components/ui/border-beam";
-import { Check, Edit2, MapPin, Package, ArrowRight, Loader2 } from "lucide-react";
+import { Check, MapPin, Package, ArrowRight, Loader2, Sparkles } from "lucide-react";
 import { getDonationState, setDonationState } from "@/lib/donation-store";
 import { DonationItem } from "@/types";
 
 export default function ReviewPage() {
   const router = useRouter();
   const [state, setState] = useState(getDonationState());
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -42,171 +40,147 @@ export default function ReviewPage() {
 
   const handleConfirm = async () => {
     setSubmitting(true);
-    // Small delay then navigate to matching
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 600));
     router.push("/match");
   };
 
   if (!state.items.length) return null;
 
   const categoryColors: Record<string, string> = {
-    food: "bg-orange-50 text-orange-700 border-orange-200",
-    beverage: "bg-blue-50 text-blue-700 border-blue-200",
-    supply: "bg-purple-50 text-purple-700 border-purple-200",
-    other: "bg-gray-50 text-gray-700 border-gray-200",
+    food: "bg-orange-50 text-orange-600 border-orange-200",
+    beverage: "bg-blue-50 text-blue-600 border-blue-200",
+    supply: "bg-purple-50 text-purple-600 border-purple-200",
+    other: "bg-gray-50 text-gray-600 border-gray-200",
+  };
+  const categoryIcons: Record<string, string> = {
+    food: "🍽️", beverage: "🥤", supply: "📦", other: "📋",
   };
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-12">
-      <BlurFade delay={0.1}>
-        <div className="flex items-center gap-2 text-emerald-600 text-sm font-medium">
-          <Check className="h-4 w-4" />
-          Photo analyzed successfully
+    <div className="mx-auto max-w-2xl px-5 py-10 md:py-16">
+      <BlurFade delay={0.05}>
+        <div className="inline-flex items-center gap-2 rounded-full bg-teal-50 border border-teal-200/60 px-3 py-1 text-sm font-medium text-teal-700 mb-4">
+          <Check className="h-3.5 w-3.5" />
+          Photo analyzed
         </div>
-        <h1 className="mt-2 text-3xl font-bold">Review Detected Items</h1>
-        <p className="mt-2 text-muted-foreground">
-          Edit quantities or remove items that aren&apos;t right.
+        <h1 className="text-3xl font-bold tracking-tight">Review Your Donation</h1>
+        <p className="mt-2 text-gray-500">
+          Confirm the detected items and location before we find recipients.
         </p>
       </BlurFade>
 
       {/* Image preview */}
       {state.imagePreview && (
-        <BlurFade delay={0.15}>
-          <Card className="relative mt-6 overflow-hidden">
+        <BlurFade delay={0.1}>
+          <div className="relative mt-6 rounded-2xl overflow-hidden shadow-card border border-gray-100">
+            <BorderBeam size={200} duration={10} colorFrom="#0D9488" colorTo="#14B8A6" />
             <img
               src={state.imagePreview}
               alt="Donation items"
-              className="h-48 w-full object-cover"
+              className="h-44 w-full object-cover"
             />
-          </Card>
+            <div className="absolute bottom-0 inset-x-0 h-20 bg-gradient-to-t from-black/40 to-transparent" />
+            <div className="absolute bottom-3 left-4 flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-teal-300" />
+              <span className="text-sm font-medium text-white">{state.items.length} items detected</span>
+            </div>
+          </div>
         </BlurFade>
       )}
 
-      {/* Items list */}
-      <div className="mt-6 space-y-3">
+      {/* Items */}
+      <div className="mt-6 space-y-2.5">
         {state.items.map((item, i) => (
-          <BlurFade key={item.id} delay={0.2 + i * 0.05}>
-            <Card className="relative flex items-center gap-4 p-4">
-              {i === 0 && (
-                <BorderBeam size={150} duration={10} colorFrom="#10b981" colorTo="#059669" />
-              )}
-              <div className="flex-1">
+          <BlurFade key={item.id} delay={0.15 + i * 0.04}>
+            <motion.div
+              layout
+              className="group flex items-center gap-4 rounded-xl bg-white border border-gray-100 p-4 shadow-sm hover:shadow-card-hover transition-all"
+            >
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-50 text-lg shrink-0">
+                {categoryIcons[item.category] || "📋"}
+              </div>
+              <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium">{item.name}</span>
-                  <Badge
-                    variant="outline"
-                    className={categoryColors[item.category] || ""}
-                  >
+                  <span className="font-medium text-gray-900">{item.name}</span>
+                  <Badge variant="outline" className={`text-[10px] ${categoryColors[item.category]}`}>
                     {item.category}
                   </Badge>
                 </div>
-                {editingId === item.id ? (
-                  <div className="mt-2 flex gap-2">
-                    <Input
-                      type="number"
-                      min={1}
-                      value={item.quantity}
-                      onChange={(e) =>
-                        updateItem(item.id, {
-                          quantity: parseInt(e.target.value) || 1,
-                        })
-                      }
-                      className="w-20"
-                    />
-                    <span className="self-center text-sm text-muted-foreground">
-                      {item.unit}
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setEditingId(null)}
-                    >
-                      <Check className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ) : (
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {item.quantity} {item.unit}
-                  </p>
-                )}
+                <p className="text-sm text-gray-400 mt-0.5">
+                  {item.quantity} {item.unit}
+                </p>
               </div>
-              <div className="flex gap-1">
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8"
-                  onClick={() =>
-                    setEditingId(editingId === item.id ? null : item.id)
-                  }
-                >
-                  <Edit2 className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8 text-destructive"
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  value={item.quantity}
+                  onChange={(e) => updateItem(item.id, { quantity: parseInt(e.target.value) || 1 })}
+                  className="w-14 rounded-lg border border-gray-200 px-2 py-1.5 text-center text-sm font-semibold text-gray-900 focus:border-teal-400 focus:ring-1 focus:ring-teal-400 outline-none"
+                />
+                <button
                   onClick={() => removeItem(item.id)}
+                  className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400 transition-all text-lg"
                 >
                   ×
-                </Button>
+                </button>
               </div>
-            </Card>
+            </motion.div>
           </BlurFade>
         ))}
       </div>
 
-      {/* Location summary */}
-      <BlurFade delay={0.4}>
-        <Card className="mt-6 p-4">
+      {/* Location */}
+      <BlurFade delay={0.35}>
+        <div className="mt-6 rounded-xl bg-white border border-gray-100 p-4 shadow-sm">
           <div className="flex items-start gap-3">
-            <MapPin className="mt-0.5 h-5 w-5 text-emerald-600" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-50 shrink-0">
+              <MapPin className="h-4 w-4 text-teal-600" />
+            </div>
             <div>
-              <p className="font-medium">Pickup Location</p>
-              <p className="text-sm text-muted-foreground">
-                {state.location?.address}
-              </p>
+              <p className="font-medium text-gray-900">Pickup Location</p>
+              <p className="text-sm text-gray-400">{state.location?.address}</p>
               {state.pickupInstructions && (
-                <p className="mt-1 text-sm text-muted-foreground italic">
+                <p className="mt-1 text-sm text-gray-400 italic">
                   &ldquo;{state.pickupInstructions}&rdquo;
                 </p>
               )}
             </div>
           </div>
-        </Card>
+        </div>
       </BlurFade>
 
-      {/* Summary */}
-      <BlurFade delay={0.45}>
-        <div className="mt-6 flex items-center justify-between rounded-lg bg-muted/50 px-4 py-3">
-          <div className="flex items-center gap-2 text-sm">
-            <Package className="h-4 w-4 text-muted-foreground" />
+      {/* Summary bar */}
+      <BlurFade delay={0.4}>
+        <div className="mt-5 flex items-center justify-between rounded-xl bg-teal-50/50 border border-teal-100 px-4 py-3">
+          <div className="flex items-center gap-2 text-sm text-teal-700">
+            <Package className="h-4 w-4" />
             <span>
-              <strong>{state.items.length}</strong> items ·{" "}
-              <strong>{state.items.reduce((s, i) => s + i.quantity, 0)}</strong>{" "}
-              total units
+              <strong>{state.items.length}</strong> items &middot;{" "}
+              <strong>{state.items.reduce((s, i) => s + i.quantity, 0)}</strong> total units
             </span>
           </div>
         </div>
       </BlurFade>
 
-      {/* Confirm */}
-      <BlurFade delay={0.5}>
-        <Button
+      {/* Submit */}
+      <BlurFade delay={0.45}>
+        <button
           onClick={handleConfirm}
           disabled={submitting || state.items.length === 0}
-          className="mt-6 w-full bg-emerald-600 hover:bg-emerald-700 h-12 text-base"
+          className="mt-6 w-full h-13 rounded-2xl gradient-teal text-white font-semibold text-base shadow-teal disabled:opacity-40 disabled:shadow-none hover:opacity-90 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
         >
           {submitting ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Loader2 className="h-4 w-4 animate-spin" />
               Finding nearby organizations...
             </>
           ) : (
             <>
-              Find Recipients <ArrowRight className="ml-2 h-4 w-4" />
+              Find Recipients <ArrowRight className="h-4 w-4" />
             </>
           )}
-        </Button>
+        </button>
       </BlurFade>
     </div>
   );

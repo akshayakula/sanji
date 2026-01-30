@@ -14,9 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PantryRun — Donate by Photo. Delivered Fast.",
+  title: "Dashwill — Snap. Match. Deliver.",
   description:
-    "Snap a photo of surplus food or supplies. AI identifies items, finds nearby shelters, and dispatches a courier. Surplus to service in minutes.",
+    "Donate extra food or supplies by snapping a photo. Dashwill finds nearby shelters, and sends a courier instantly.",
 };
 
 export default function RootLayout({
@@ -27,7 +27,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased bg-[#FAFAFA]`}
       >
         <Navbar />
         <main className="min-h-screen">{children}</main>
