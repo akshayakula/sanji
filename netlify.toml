@@ -1,0 +1,8 @@
+# Netlify config for Next.js (root app). local-server/ is not deployed.
+
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
