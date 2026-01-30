@@ -94,10 +94,10 @@ export default function DonatePage() {
   };
 
   const categoryIcons: Record<string, string> = {
-    food: "\U0001F37D\uFE0F",
-    beverage: "\U0001F964",
-    supply: "\U0001F4E6",
-    other: "\U0001F4CB",
+    food: "🍽️",
+    beverage: "🥤",
+    supply: "📦",
+    other: "📋",
   };
 
   return (
