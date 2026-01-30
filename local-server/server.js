@@ -152,8 +152,8 @@ app.post('/type', async (req, res) => {
 // Uber: pickup/dropoff field selectors and test addresses
 const PICKUP_SELECTOR = '[data-testid="enhancer-container-pickup"] input[role="combobox"], [data-testid="enhancer-container-pickup"] input';
 const DROPOFF_SELECTOR = '[data-testid="enhancer-container-drop0"] input[role="combobox"], [data-testid="enhancer-container-drop0"] input';
-const PICKUP_TEST_ADDRESS = '241 18th St S, Arlington';
-const DROPOFF_TEST_ADDRESS = '203 S Fillmore St, Arlington';
+const PICKUP_TEST_ADDRESS = '241 18th St S';
+const DROPOFF_TEST_ADDRESS = '203 S Fillmore St';
 
 async function fillAddressAndEnter(selector, address) {
   await page.click(selector, { timeout: 5000 });

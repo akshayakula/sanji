@@ -43,20 +43,66 @@ export default function DonatePage() {
     [handleFile]
   );
 
+  /** Resize/compress data URL so payload stays under Netlify ~6MB limit and API works reliably. */
+  const compressImageDataUrl = useCallback((dataUrl: string, maxSize = 1024, quality = 0.85): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        const w = img.naturalWidth;
+        const h = img.naturalHeight;
+        if (w <= maxSize && h <= maxSize && dataUrl.length < 4_000_000) {
+          resolve(dataUrl);
+          return;
+        }
+        const scale = Math.min(maxSize / w, maxSize / h, 1);
+        const cw = Math.round(w * scale);
+        const ch = Math.round(h * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = cw;
+        canvas.height = ch;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(dataUrl);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, cw, ch);
+        try {
+          const out = canvas.toDataURL("image/jpeg", quality);
+          resolve(out);
+        } catch {
+          resolve(dataUrl);
+        }
+      };
+      img.onerror = () => reject(new Error("Image load failed"));
+      img.src = dataUrl;
+    });
+  }, []);
+
   const handleAnalyze = async () => {
     if (!imagePreview) return;
     setAnalyzing(true);
     try {
+      const imageToSend = await compressImageDataUrl(imagePreview);
       const res = await fetch("/api/vision", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: imagePreview }),
+        body: JSON.stringify({ image: imageToSend }),
       });
       const data = await res.json();
-      setItems(data.items);
-      setAnalyzed(true);
-    } catch {
-      alert("Failed to analyze image.");
+      if (!res.ok) {
+        const msg = typeof data?.error === "string" ? data.error : "Failed to analyze image.";
+        alert(msg);
+        return;
+      }
+      if (Array.isArray(data.items)) {
+        setItems(data.items);
+        setAnalyzed(true);
+      } else {
+        alert("No items detected. Try a clearer photo.");
+      }
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to analyze image.");
     } finally {
       setAnalyzing(false);
     }
