@@ -10,6 +10,7 @@ export interface DonorLocation {
   address: string;
   lat: number;
   lng: number;
+  placeId?: string;
   pickupInstructions?: string;
 }
 

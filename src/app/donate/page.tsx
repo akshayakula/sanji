@@ -4,7 +4,6 @@ import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { BorderBeam } from "@/components/ui/border-beam";
 import { BlurFade } from "@/components/ui/blur-fade";
@@ -12,12 +11,15 @@ import {
   Upload, Camera, MapPin, Loader2, X, ImageIcon, Sparkles, Package, ArrowRight,
 } from "lucide-react";
 import { setDonationState } from "@/lib/donation-store";
-import { DonationItem } from "@/types";
+import { DonationItem, DonorLocation } from "@/types";
+import { AddressAutocomplete, PlaceResult } from "@/components/address-autocomplete";
+import { MapView, FallbackMap } from "@/components/map-view";
 
 export default function DonatePage() {
   const router = useRouter();
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [address, setAddress] = useState("");
+  const [selectedPlace, setSelectedPlace] = useState<PlaceResult | null>(null);
   const [pickupInstructions, setPickupInstructions] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzed, setAnalyzed] = useState(false);
@@ -66,17 +68,24 @@ export default function DonatePage() {
     setItems((prev) => prev.filter((item) => item.id !== id));
   };
 
+  const handlePlaceSelect = (place: PlaceResult) => {
+    setSelectedPlace(place);
+    setAddress(place.address);
+  };
+
   const handleSubmit = () => {
     if (!items.length || !address.trim()) return;
+    const location: DonorLocation = {
+      address: address.trim(),
+      lat: selectedPlace?.lat ?? 37.7849,
+      lng: selectedPlace?.lng ?? -122.4094,
+      placeId: selectedPlace?.placeId,
+      pickupInstructions: pickupInstructions.trim() || undefined,
+    };
     setDonationState({
       imagePreview,
       items,
-      location: {
-        address: address.trim(),
-        lat: 37.7849,
-        lng: -122.4094,
-        pickupInstructions: pickupInstructions.trim() || undefined,
-      },
+      location,
       pickupInstructions: pickupInstructions.trim(),
     });
     router.push("/donate/review");
@@ -238,43 +247,27 @@ export default function DonatePage() {
               <div>
                 <label className="text-sm font-semibold text-gray-900">Location</label>
                 <p className="text-xs text-gray-400 mt-0.5">Where should the courier pick up?</p>
-                <div className="relative mt-3">
-                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-teal-500" />
-                  <Input
-                    placeholder="Enter your address..."
+                <div className="mt-3">
+                  <AddressAutocomplete
                     value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                    className="pl-10 h-11 rounded-xl border-gray-200 focus:border-teal-400 focus:ring-teal-400"
+                    onChange={setAddress}
+                    onPlaceSelect={handlePlaceSelect}
+                    placeholder="Search for an address..."
                   />
                 </div>
               </div>
 
-              {/* Mock map area */}
-              <div className="rounded-xl bg-gradient-to-br from-teal-50 via-white to-teal-50/30 h-40 border border-teal-100/50 relative overflow-hidden">
-                <div className="absolute inset-0 opacity-40">
-                  <div className="absolute top-6 left-8 h-1.5 w-20 bg-teal-200 rounded" />
-                  <div className="absolute top-10 left-4 h-1 w-28 bg-teal-100 rounded" />
-                  <div className="absolute top-16 left-10 h-1 w-16 bg-teal-200 rounded" />
-                  <div className="absolute bottom-10 right-6 h-1.5 w-24 bg-teal-100 rounded" />
-                  <div className="absolute bottom-16 right-10 h-1 w-16 bg-teal-200 rounded" />
-                </div>
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-                  <div className="relative">
-                    <div className="h-8 w-8 rounded-full bg-teal-500 border-3 border-white shadow-lg flex items-center justify-center">
-                      <MapPin className="h-4 w-4 text-white" />
-                    </div>
-                    <div className="absolute inset-0 rounded-full bg-teal-400 animate-pulse-ring" />
-                  </div>
-                </div>
-                {address && (
-                  <div className="absolute bottom-3 left-3 right-3 rounded-lg bg-white/90 backdrop-blur-sm px-3 py-2 shadow-sm">
-                    <div className="flex items-center gap-2">
-                      <MapPin className="h-3 w-3 text-teal-500 shrink-0" />
-                      <span className="text-xs text-gray-600 truncate">{address}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
+              {/* Map */}
+              {selectedPlace ? (
+                <MapView
+                  lat={selectedPlace.lat}
+                  lng={selectedPlace.lng}
+                  zoom={16}
+                  className="h-48"
+                />
+              ) : (
+                <FallbackMap address={address || undefined} className="h-48" />
+              )}
 
               <div>
                 <label className="text-sm font-semibold text-gray-900">
