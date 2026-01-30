@@ -15,8 +15,14 @@ interface OrgCallState {
   callId?: string;
 }
 
+const LITTLE_YELLOW_PANTRY_NAME = "Little Yellow Pantry";
+
 function buildItemsSummary(items: { name: string; quantity: number; unit: string }[]): string {
   return items.map((i) => `${i.quantity} ${i.unit} of ${i.name}`).join(", ");
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 export default function MatchPage() {
@@ -119,55 +125,31 @@ export default function MatchPage() {
           prev.map((s, idx) => (idx === i ? { ...s, status: "calling" } : s))
         );
 
-        try {
-          const res = await fetch("/api/agent", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              phoneNumber: orgs[i].phone,
-              orgName: orgs[i].name,
-              itemsSummary,
-            }),
-          });
-          const data = await res.json();
-
-          if (data.error) {
-            setCallStates((prev) =>
-              prev.map((s, idx) =>
-                idx === i ? { ...s, status: "no_answer", message: data.error } : s
-              )
-            );
-            continue;
-          }
-
-          const callId = data.callId;
-          setCallStates((prev) =>
-            prev.map((s, idx) => (idx === i ? { ...s, callId } : s))
-          );
-
-          const result = await pollCallStatus(callId, i);
-
+        // Little Yellow Pantry: always show call answered (accepted) without calling VAPI
+        if (orgs[i].name === LITTLE_YELLOW_PANTRY_NAME) {
+          await delay(1000);
           setCallStates((prev) =>
             prev.map((s, idx) =>
               idx === i
-                ? { ...s, status: result.status as CallStatus, message: result.message }
+                ? { ...s, status: "accepted", message: "Organization accepted the donation." }
                 : s
             )
           );
-
-          if (result.status === "accepted") {
-            setAccepted(true);
-            setDonationState({ matchedOrg: orgs[i] });
-            setTimeout(() => router.push("/match/result"), 2000);
-            return;
-          }
-        } catch {
-          setCallStates((prev) =>
-            prev.map((s, idx) =>
-              idx === i ? { ...s, status: "no_answer", message: "Call failed" } : s
-            )
-          );
+          setAccepted(true);
+          setDonationState({ matchedOrg: orgs[i] });
+          setTimeout(() => router.push("/match/result"), 2000);
+          return;
         }
+
+        // Other orgs: wait 10–15 seconds then show call not answered (no VAPI call)
+        const waitMs = 10000 + Math.floor(Math.random() * 5000);
+        await delay(waitMs);
+        setCallStates((prev) =>
+          prev.map((s, idx) =>
+            idx === i ? { ...s, status: "no_answer", message: "Call not answered" } : s
+          )
+        );
+        continue;
       }
     };
 
