@@ -233,16 +233,25 @@ export default function MatchPage() {
         </div>
       )}
 
-      {/* Org List */}
-      {!loadingOrgs && !error && (
+      {/* Org List — always show when we have orgs; each row is clickable to select that recipient */}
+      {!loadingOrgs && !error && callStates.length > 0 && (
         <div className="mt-6 space-y-2.5">
           {callStates.map((cs, i) => {
             const cfg = statusConfig[cs.status];
+            const terminal = !["calling", "dialing", "ringing", "talking", "analyzing", "pending"].includes(cs.status);
+            const selectRecipient = () => {
+              setDonationState({ matchedOrg: cs.org });
+              router.push("/match/result");
+            };
             return (
               <BlurFade key={cs.org.id} delay={0.15 + i * 0.05}>
                 <motion.div
                   layout
-                  className={`rounded-xl bg-white border p-4 transition-all duration-500 ${
+                  role="button"
+                  tabIndex={0}
+                  onClick={selectRecipient}
+                  onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && selectRecipient()}
+                  className={`rounded-xl bg-white border p-4 transition-all duration-500 cursor-pointer hover:shadow-md focus:outline-none focus:ring-2 focus:ring-teal-400 focus:ring-offset-2 ${
                     cs.status === "talking"
                       ? "border-violet-200 shadow-md ring-1 ring-violet-100"
                       : cs.status === "ringing"
@@ -267,9 +276,14 @@ export default function MatchPage() {
                         <p className="text-xs text-gray-300">{cs.org.distance} mi away</p>
                       </div>
                     </div>
-                    <div className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium shrink-0 ${cfg.classes}`}>
-                      {cfg.icon}
-                      {cfg.label}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${cfg.classes}`}>
+                        {cfg.icon}
+                        {cfg.label}
+                      </div>
+                      <span className="text-xs text-gray-400" aria-hidden>
+                        {terminal ? "Tap to select" : ""}
+                      </span>
                     </div>
                   </div>
                   <AnimatePresence>
@@ -290,7 +304,7 @@ export default function MatchPage() {
         </div>
       )}
 
-      {/* Status */}
+      {/* Status — always show "AI agent is calling..." once we're past loading (even on error) */}
       <BlurFade delay={0.45}>
         <div className="mt-8">
           {accepted ? (
@@ -304,7 +318,7 @@ export default function MatchPage() {
               </div>
               <p className="font-semibold text-gray-900">Match found! Redirecting...</p>
             </motion.div>
-          ) : !loadingOrgs && !error && callStates.length > 0 ? (
+          ) : !loadingOrgs ? (
             <div className="flex items-center justify-center gap-2 text-sm text-gray-400">
               <Phone className="h-4 w-4 text-teal-500" />
               AI agent is calling organizations...
