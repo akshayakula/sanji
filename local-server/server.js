@@ -1,4 +1,5 @@
 const express = require('express');
+const { spawn } = require('child_process');
 const { chromium } = require('playwright');
 
 const app = express();
@@ -6,28 +7,77 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 8080;
 const CDP_ENDPOINT = process.env.CDP_ENDPOINT; // e.g. http://localhost:9222
+const CDP_PORT = 9222;
 
 let browser = null;
 let page = null;
 
+function launchChromeWithDebugPort() {
+  if (process.platform !== 'darwin') return;
+  const chrome = spawn('open', [
+    '-n',
+    '-a',
+    'Google Chrome',
+    '--args',
+    '--remote-debugging-port=' + CDP_PORT,
+  ], {
+    detached: true,
+    stdio: 'ignore',
+  });
+  chrome.unref();
+  console.log('Launching Chrome with remote debugging on port', CDP_PORT);
+}
+
+async function connectCDP(endpoint) {
+  browser = await chromium.connectOverCDP(endpoint);
+  const contexts = browser.contexts();
+  const context = contexts[0] || await browser.newContext();
+  const pages = context.pages();
+  page = pages[0] || await context.newPage();
+}
+
 async function ensureBrowser() {
   if (browser && browser.isConnected()) return;
-  if (!CDP_ENDPOINT) {
-    throw new Error(
-      'CDP_ENDPOINT required. Start Chrome with --remote-debugging-port=9222 then run with CDP_ENDPOINT=http://127.0.0.1:9222'
-    );
+  const endpoint = CDP_ENDPOINT || `http://127.0.0.1:${CDP_PORT}`;
+  // Try existing CDP first
+  if (CDP_ENDPOINT) {
+    try {
+      await connectCDP(CDP_ENDPOINT);
+      return;
+    } catch (err) {
+      console.warn('CDP connect failed, launching Chrome with debug port:', err.message);
+    }
   }
+  // Launch Chrome with debug port, then connect
+  launchChromeWithDebugPort();
+  await new Promise((r) => setTimeout(r, 5000));
   try {
-    browser = await chromium.connectOverCDP(CDP_ENDPOINT);
-    const contexts = browser.contexts();
-    const context = contexts[0] || await browser.newContext();
-    const pages = context.pages();
-    page = pages[0] || await context.newPage();
+    await connectCDP(`http://127.0.0.1:${CDP_PORT}`);
+    return;
   } catch (err) {
-    throw new Error(
-      `Could not connect to Chrome at ${CDP_ENDPOINT}. Start Chrome with: /Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome --remote-debugging-port=9222 — ${err.message}`
-    );
+    console.warn('CDP connect after launch failed, using Playwright browser:', err.message);
   }
+  // Fallback: Playwright-launched browser
+  const launchOptions = {
+    headless: false,
+    args: [
+      '--disable-blink-features=AutomationControlled',
+      '--no-first-run',
+      '--no-default-browser-check',
+    ],
+  };
+  try {
+    browser = await chromium.launch({ ...launchOptions, channel: 'chrome' });
+  } catch {
+    browser = await chromium.launch(launchOptions);
+  }
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 800 },
+    userAgent:
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    locale: 'en-US',
+  });
+  page = await context.newPage();
 }
 
 function getPages() {

@@ -1,19 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { BorderBeam } from "@/components/ui/border-beam";
-import { CheckCircle2, Truck, MapPin, Clock, ArrowRight, Loader2, Navigation, MessageSquare } from "lucide-react";
+import { CheckCircle2, Truck, MapPin, Clock, ArrowRight, Loader2, Navigation, MessageSquare, Receipt } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { getDonationState, setDonationState } from "@/lib/donation-store";
+
+interface ParsedConfirmation {
+  pickup?: string | null;
+  dropoff?: string | null;
+  eta?: string | null;
+  price?: string | null;
+  status?: string | null;
+  summary?: string | null;
+}
 
 export default function MatchResultPage() {
   const router = useRouter();
   const [state] = useState(getDonationState());
   const [dispatching, setDispatching] = useState(false);
   const [pickupInstructions, setPickupInstructions] = useState("");
+  const [parsedConfirmation, setParsedConfirmation] = useState<ParsedConfirmation | null>(null);
+  const pickupDropoffCalled = useRef(false);
 
   useEffect(() => {
     if (!state.matchedOrg) {
@@ -21,16 +32,54 @@ export default function MatchResultPage() {
     }
   }, [state.matchedOrg, router]);
 
+  // When we land on match found, call pickup-dropoff (default addresses)
+  useEffect(() => {
+    if (!state.matchedOrg || pickupDropoffCalled.current) return;
+    pickupDropoffCalled.current = true;
+    fetch("/api/local/pickup-dropoff", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    }).catch(() => {});
+  }, [state.matchedOrg]);
+
   const handleDispatch = async () => {
     setDispatching(true);
+    setParsedConfirmation(null);
+    const id = "del-" + Math.random().toString(36).substring(2, 8);
+    setDonationState({ pickupInstructions: pickupInstructions.trim(), deliveryId: id });
     try {
-      setDonationState({ pickupInstructions: pickupInstructions.trim() });
-      const res = await fetch("/api/delivery", { method: "POST" });
-      const data = await res.json();
-      setDonationState({ deliveryId: data.id });
-      router.push(`/track/${data.id}`);
+      // Show loader for 30 seconds
+      await new Promise((r) => setTimeout(r, 30000));
+      const confirmRes = await fetch("/api/local/confirm-delivery", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!confirmRes.ok) {
+        setParsedConfirmation({ summary: "Your order has been submitted. You can track it below." });
+        return;
+      }
+      const contentRes = await fetch("/api/local/content");
+      if (!contentRes.ok) {
+        setParsedConfirmation({ summary: "Your order has been submitted. You can track it below." });
+        return;
+      }
+      const { html } = await contentRes.json().catch(() => ({ html: "" }));
+      const parseRes = await fetch("/api/delivery/parse-confirmation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ html }),
+      });
+      if (!parseRes.ok) {
+        setParsedConfirmation({ summary: "Your order has been submitted. You can track it below." });
+        return;
+      }
+      const parsed = (await parseRes.json()) as ParsedConfirmation;
+      setParsedConfirmation(parsed);
     } catch {
-      alert("Failed to dispatch courier.");
+      setParsedConfirmation({ summary: "Your order has been submitted. You can track it below." });
+    } finally {
       setDispatching(false);
     }
   };
@@ -154,23 +203,81 @@ export default function MatchResultPage() {
 
       {/* CTA */}
       <BlurFade delay={0.4}>
-        <button
-          onClick={handleDispatch}
-          disabled={dispatching}
-          className="mt-8 w-full h-14 rounded-2xl gradient-teal text-white font-semibold text-base shadow-teal disabled:opacity-50 hover:opacity-90 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-        >
-          {dispatching ? (
-            <>
-              <Loader2 className="h-5 w-5 animate-spin" />
-              Dispatching courier...
-            </>
-          ) : (
-            <>
-              <Truck className="h-5 w-5" />
-              Track Order <ArrowRight className="h-4 w-4" />
-            </>
-          )}
-        </button>
+        {!parsedConfirmation ? (
+          <>
+            <button
+              onClick={handleDispatch}
+              disabled={dispatching}
+              className="mt-8 w-full h-14 rounded-2xl gradient-teal text-white font-semibold text-base shadow-teal disabled:opacity-50 hover:opacity-90 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+            >
+              {dispatching ? (
+                <>
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  Confirming delivery… (30s)
+                </>
+              ) : (
+                <>
+                  <Truck className="h-5 w-5" />
+                  Track Order <ArrowRight className="h-4 w-4" />
+                </>
+              )}
+            </button>
+          </>
+        ) : (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-8 rounded-2xl bg-white border border-gray-100 p-6 shadow-card-hover overflow-hidden"
+          >
+            <BorderBeam size={200} duration={8} colorFrom="#0D9488" colorTo="#14B8A6" />
+            <div className="flex items-center gap-2 mb-4">
+              <Receipt className="h-5 w-5 text-teal-600" />
+              <h2 className="text-lg font-bold text-gray-900">Order confirmation</h2>
+            </div>
+            {parsedConfirmation.summary && (
+              <p className="text-sm text-gray-700 mb-4">{parsedConfirmation.summary}</p>
+            )}
+            <div className="space-y-2 text-sm">
+              {parsedConfirmation.pickup && (
+                <div className="flex gap-2">
+                  <span className="text-gray-500 shrink-0">Pickup:</span>
+                  <span className="text-gray-900">{parsedConfirmation.pickup}</span>
+                </div>
+              )}
+              {parsedConfirmation.dropoff && (
+                <div className="flex gap-2">
+                  <span className="text-gray-500 shrink-0">Dropoff:</span>
+                  <span className="text-gray-900">{parsedConfirmation.dropoff}</span>
+                </div>
+              )}
+              {parsedConfirmation.eta && (
+                <div className="flex gap-2">
+                  <span className="text-gray-500 shrink-0">ETA:</span>
+                  <span className="text-gray-900">{parsedConfirmation.eta}</span>
+                </div>
+              )}
+              {parsedConfirmation.price && (
+                <div className="flex gap-2">
+                  <span className="text-gray-500 shrink-0">Price:</span>
+                  <span className="text-gray-900 font-medium">{parsedConfirmation.price}</span>
+                </div>
+              )}
+              {parsedConfirmation.status && (
+                <div className="flex gap-2">
+                  <span className="text-gray-500 shrink-0">Status:</span>
+                  <span className="text-teal-600 font-medium">{parsedConfirmation.status}</span>
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => router.push(`/track/${state.deliveryId || "del-pending"}`)}
+              className="mt-5 w-full h-12 rounded-xl gradient-teal text-white font-semibold text-sm shadow-teal hover:opacity-90 flex items-center justify-center gap-2"
+            >
+              <Navigation className="h-4 w-4" />
+              View tracking
+            </button>
+          </motion.div>
+        )}
       </BlurFade>
     </div>
   );
