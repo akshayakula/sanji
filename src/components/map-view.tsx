@@ -1,6 +1,6 @@
 "use client";
 
-import { Map, AdvancedMarker, Pin } from "@vis.gl/react-google-maps";
+import { Map, Marker } from "@vis.gl/react-google-maps";
 import { isGoogleMapsConfigured } from "@/lib/google-maps";
 import { MapPin } from "lucide-react";
 
@@ -52,22 +52,21 @@ export function MapView({ lat, lng, zoom = 15, className, markers = [] }: MapVie
   return (
     <div className={`rounded-xl overflow-hidden border border-gray-100 shadow-sm ${className || "h-52"}`}>
       <Map
-        defaultCenter={{ lat, lng }}
-        defaultZoom={zoom}
+        center={{ lat, lng }}
+        zoom={zoom}
         gestureHandling="cooperative"
-        disableDefaultUI
-        mapId="dashwill-map"
+        disableDefaultUI={false}
+        zoomControl={true}
+        streetViewControl={false}
+        mapTypeControl={false}
+        fullscreenControl={false}
         style={{ width: "100%", height: "100%" }}
       >
         {allMarkers.map((marker, i) => (
-          <AdvancedMarker key={i} position={{ lat: marker.lat, lng: marker.lng }}>
-            <Pin
-              background={i === 0 ? "#0D9488" : "#14B8A6"}
-              borderColor="#FFFFFF"
-              glyphColor="#FFFFFF"
-              scale={i === 0 ? 1.2 : 1}
-            />
-          </AdvancedMarker>
+          <Marker
+            key={i}
+            position={{ lat: marker.lat, lng: marker.lng }}
+          />
         ))}
       </Map>
     </div>

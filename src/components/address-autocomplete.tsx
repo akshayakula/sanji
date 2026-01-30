@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useEffect, useState, useCallback } from "react";
-import { MapPin, Loader2 } from "lucide-react";
+import { useRef, useEffect, useState } from "react";
+import { useMapsLibrary } from "@vis.gl/react-google-maps";
+import { MapPin, Loader2, Search } from "lucide-react";
 import { isGoogleMapsConfigured } from "@/lib/google-maps";
 import { Input } from "@/components/ui/input";
 
@@ -20,23 +21,22 @@ interface AddressAutocompleteProps {
   className?: string;
 }
 
-export function AddressAutocomplete({
+function GoogleAutocomplete({
   value,
   onChange,
   onPlaceSelect,
-  placeholder = "Enter your address...",
+  placeholder,
   className,
 }: AddressAutocompleteProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const configured = isGoogleMapsConfigured();
+  const places = useMapsLibrary("places");
+  const [ready, setReady] = useState(false);
 
-  const initAutocomplete = useCallback(() => {
-    if (!configured || !inputRef.current || autocompleteRef.current) return;
-    if (!window.google?.maps?.places) return;
+  useEffect(() => {
+    if (!places || !inputRef.current || autocompleteRef.current) return;
 
-    const autocomplete = new google.maps.places.Autocomplete(inputRef.current, {
+    const autocomplete = new places.Autocomplete(inputRef.current, {
       types: ["address"],
       fields: ["formatted_address", "geometry", "place_id"],
     });
@@ -57,66 +57,54 @@ export function AddressAutocomplete({
     });
 
     autocompleteRef.current = autocomplete;
-  }, [configured, onChange, onPlaceSelect]);
-
-  useEffect(() => {
-    if (!configured) return;
-
-    // Google Maps API may load async — poll briefly
-    if (window.google?.maps?.places) {
-      initAutocomplete();
-      return;
-    }
-
-    setIsLoading(true);
-    const interval = setInterval(() => {
-      if (window.google?.maps?.places) {
-        clearInterval(interval);
-        setIsLoading(false);
-        initAutocomplete();
-      }
-    }, 200);
-
-    const timeout = setTimeout(() => {
-      clearInterval(interval);
-      setIsLoading(false);
-    }, 10000);
-
-    return () => {
-      clearInterval(interval);
-      clearTimeout(timeout);
-    };
-  }, [configured, initAutocomplete]);
-
-  // Fallback: plain input when Google Maps is not configured
-  if (!configured) {
-    return (
-      <div className={`relative ${className || ""}`}>
-        <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-teal-500" />
-        <Input
-          placeholder={placeholder}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="pl-10 h-11 rounded-xl border-gray-200 focus:border-teal-400 focus:ring-teal-400"
-        />
-      </div>
-    );
-  }
+    setReady(true);
+  }, [places, onChange, onPlaceSelect]);
 
   return (
     <div className={`relative ${className || ""}`}>
-      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-teal-500 z-10" />
-      {isLoading && (
+      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-teal-500 z-10 pointer-events-none" />
+      {!ready && (
         <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-300 animate-spin z-10" />
+      )}
+      {ready && (
+        <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-300 z-10 pointer-events-none" />
       )}
       <input
         ref={inputRef}
         type="text"
         placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="flex h-11 w-full rounded-xl border border-gray-200 bg-transparent pl-10 pr-4 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus:border-teal-400 focus:ring-1 focus:ring-teal-400 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+        defaultValue={value}
+        className="flex h-11 w-full rounded-xl border border-gray-200 bg-white pl-10 pr-10 py-2 text-sm shadow-xs placeholder:text-gray-400 focus:border-teal-400 focus:ring-1 focus:ring-teal-400 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
       />
     </div>
   );
+}
+
+function PlainInput({
+  value,
+  onChange,
+  placeholder,
+  className,
+}: Omit<AddressAutocompleteProps, "onPlaceSelect">) {
+  return (
+    <div className={`relative ${className || ""}`}>
+      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-teal-500" />
+      <Input
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="pl-10 h-11 rounded-xl border-gray-200 focus:border-teal-400 focus:ring-teal-400"
+      />
+    </div>
+  );
+}
+
+export function AddressAutocomplete(props: AddressAutocompleteProps) {
+  const configured = isGoogleMapsConfigured();
+
+  if (!configured) {
+    return <PlainInput {...props} />;
+  }
+
+  return <GoogleAutocomplete {...props} />;
 }

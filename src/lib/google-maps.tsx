@@ -14,7 +14,7 @@ export function GoogleMapsProvider({ children }: GoogleMapsProviderProps) {
   }
 
   return (
-    <APIProvider apiKey={GOOGLE_MAPS_API_KEY} libraries={["places"]}>
+    <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
       {children}
     </APIProvider>
   );
@@ -23,3 +23,5 @@ export function GoogleMapsProvider({ children }: GoogleMapsProviderProps) {
 export function isGoogleMapsConfigured(): boolean {
   return !!GOOGLE_MAPS_API_KEY;
 }
+
+export { GOOGLE_MAPS_API_KEY };
