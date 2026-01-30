@@ -302,7 +302,7 @@ export default function HomePage() {
         <div className="flex gap-8 animate-marquee whitespace-nowrap" style={{ "--duration": "30s" } as React.CSSProperties}>
           {[...Array(2)].flatMap((_, setIdx) =>
             [
-              "Trusted by 50+ shelters in SF",
+              "Trusted by 50+ shelters in DC",
               "AI-powered food matching",
               "Zero waste delivery",
               "Community-first platform",

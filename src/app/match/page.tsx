@@ -4,38 +4,117 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { BlurFade } from "@/components/ui/blur-fade";
-import { Phone, CheckCircle2, XCircle, Clock, Building2, Loader2, MapPin } from "lucide-react";
-import { setDonationState } from "@/lib/donation-store";
+import { Phone, PhoneCall, CheckCircle2, XCircle, Clock, Loader2, MapPin, AudioLines } from "lucide-react";
+import { getDonationState, setDonationState } from "@/lib/donation-store";
 import { Organization, CallStatus } from "@/types";
 
 interface OrgCallState {
   org: Organization;
   status: CallStatus;
   message?: string;
+  callId?: string;
 }
 
-const orgs: Organization[] = [
-  { id: "org-1", name: "California Homeless Coalition", type: "shelter", address: "Brown Correctional Ave on 5ello", lat: 37.7897, lng: -122.3942, phone: "+1 (415) 555-0101", distance: 0.8, acceptsCategories: ["food", "beverage"], operatingHours: "Mon-Sat 7AM-8PM" },
-  { id: "org-2", name: "Central Community Kitchen", type: "kitchen", address: "Usage anaba lobelen 6ls, panree daily", lat: 37.7589, lng: -122.4214, phone: "+1 (415) 555-0102", distance: 1.2, acceptsCategories: ["food", "beverage", "supply"], operatingHours: "24/7" },
-  { id: "org-3", name: "St. Mark's Shelter", type: "shelter", address: "Thaprerentedelding the 1 loenfeen, rabl-risers", lat: 37.7847, lng: -122.4126, phone: "+1 (415) 555-0103", distance: 1.5, acceptsCategories: ["food", "beverage"], operatingHours: "24/7" },
-  { id: "org-4", name: "Pine Street Mission", type: "foodbank", address: "Coplient te Mission, 6ldees", lat: 37.7873, lng: -122.3964, phone: "+1 (415) 555-0104", distance: 2.1, acceptsCategories: ["food", "supply"], operatingHours: "Mon-Fri 9AM-5PM" },
-  { id: "org-5", name: "Mission Haven", type: "shelter", address: "1050 Folsom St, San Francisco, CA 94103", lat: 37.7781, lng: -122.4055, phone: "+1 (415) 555-0105", distance: 2.4, acceptsCategories: ["food", "beverage", "supply", "other"], operatingHours: "Mon-Sun 6AM-10PM" },
-];
+function buildItemsSummary(items: { name: string; quantity: number; unit: string }[]): string {
+  return items.map((i) => `${i.quantity} ${i.unit} of ${i.name}`).join(", ");
+}
 
 export default function MatchPage() {
   const router = useRouter();
-  const [callStates, setCallStates] = useState<OrgCallState[]>(
-    orgs.map((org) => ({ org, status: "pending" }))
-  );
+  const donationState = getDonationState();
+  const [callStates, setCallStates] = useState<OrgCallState[]>([]);
   const [accepted, setAccepted] = useState(false);
+  const [loadingOrgs, setLoadingOrgs] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const startedRef = useRef(false);
 
+  const itemsSummary = buildItemsSummary(donationState.items);
+
+  // Fetch nearby orgs based on donor location
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
 
-    const callOrgs = async () => {
+    const run = async () => {
+      // Get donor location
+      const loc = donationState.location;
+      if (!loc) {
+        setError("No location set. Please go back and enter your address.");
+        setLoadingOrgs(false);
+        return;
+      }
+
+      // Fetch nearby orgs
+      try {
+        const res = await fetch("/api/orgs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lat: loc.lat, lng: loc.lng }),
+        });
+        const data = await res.json();
+
+        if (data.error || !data.organizations?.length) {
+          setError("No nearby organizations found. Try a different location.");
+          setLoadingOrgs(false);
+          return;
+        }
+
+        const orgs: Organization[] = data.organizations;
+        setCallStates(orgs.map((org: Organization) => ({ org, status: "pending" as CallStatus })));
+        setLoadingOrgs(false);
+
+        // Start calling orgs sequentially
+        await callOrgsSequentially(orgs);
+      } catch {
+        setError("Failed to find nearby organizations.");
+        setLoadingOrgs(false);
+      }
+    };
+
+    const pollCallStatus = async (callId: string, orgIndex: number): Promise<{ status: string; message?: string }> => {
+      const maxAttempts = 60;
+      const inProgressStatuses = new Set(["calling", "dialing", "ringing", "talking", "analyzing"]);
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        try {
+          const res = await fetch(`/api/agent/${callId}`);
+          const data = await res.json();
+
+          // Update UI with granular status while call is in progress
+          if (inProgressStatuses.has(data.status)) {
+            setCallStates((prev) =>
+              prev.map((s, idx) =>
+                idx === orgIndex
+                  ? { ...s, status: data.status as CallStatus, message: data.message }
+                  : s
+              )
+            );
+          }
+
+          // Terminal statuses: return result
+          if (!inProgressStatuses.has(data.status)) {
+            return { status: data.status, message: data.message };
+          }
+        } catch {
+          // continue polling
+        }
+      }
+      return { status: "no_answer", message: "Call timed out" };
+    };
+
+    const callOrgsSequentially = async (orgs: Organization[]) => {
       for (let i = 0; i < orgs.length; i++) {
+        // Skip orgs without phone numbers
+        if (!orgs[i].phone || orgs[i].phone.length < 8) {
+          setCallStates((prev) =>
+            prev.map((s, idx) =>
+              idx === i ? { ...s, status: "no_answer", message: "No phone number available" } : s
+            )
+          );
+          continue;
+        }
+
+        // Mark as calling
         setCallStates((prev) =>
           prev.map((s, idx) => (idx === i ? { ...s, status: "calling" } : s))
         );
@@ -44,17 +123,39 @@ export default function MatchPage() {
           const res = await fetch("/api/agent", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ orgId: orgs[i].id }),
+            body: JSON.stringify({
+              phoneNumber: orgs[i].phone,
+              orgName: orgs[i].name,
+              itemsSummary,
+            }),
           });
           const data = await res.json();
 
+          if (data.error) {
+            setCallStates((prev) =>
+              prev.map((s, idx) =>
+                idx === i ? { ...s, status: "no_answer", message: data.error } : s
+              )
+            );
+            continue;
+          }
+
+          const callId = data.callId;
+          setCallStates((prev) =>
+            prev.map((s, idx) => (idx === i ? { ...s, callId } : s))
+          );
+
+          const result = await pollCallStatus(callId, i);
+
           setCallStates((prev) =>
             prev.map((s, idx) =>
-              idx === i ? { ...s, status: data.status, message: data.message } : s
+              idx === i
+                ? { ...s, status: result.status as CallStatus, message: result.message }
+                : s
             )
           );
 
-          if (data.status === "accepted") {
+          if (result.status === "accepted") {
             setAccepted(true);
             setDonationState({ matchedOrg: orgs[i] });
             setTimeout(() => router.push("/match/result"), 2000);
@@ -70,15 +171,19 @@ export default function MatchPage() {
       }
     };
 
-    callOrgs();
-  }, [router]);
+    run();
+  }, [router, itemsSummary, donationState.location]);
 
   const statusConfig: Record<CallStatus, { icon: React.ReactNode; label: string; classes: string }> = {
     pending: { icon: <Clock className="h-3.5 w-3.5" />, label: "Waiting", classes: "text-gray-400 bg-gray-50" },
-    calling: { icon: <Loader2 className="h-3.5 w-3.5 animate-spin" />, label: "Calling...", classes: "text-teal-600 bg-teal-50 border-teal-200" },
+    calling: { icon: <Loader2 className="h-3.5 w-3.5 animate-spin" />, label: "Connecting...", classes: "text-teal-600 bg-teal-50 border-teal-200" },
+    dialing: { icon: <Phone className="h-3.5 w-3.5 animate-pulse" />, label: "Dialing...", classes: "text-teal-600 bg-teal-50 border-teal-200" },
+    ringing: { icon: <PhoneCall className="h-3.5 w-3.5 animate-pulse" />, label: "Ringing...", classes: "text-blue-600 bg-blue-50 border-blue-200" },
+    talking: { icon: <AudioLines className="h-3.5 w-3.5 animate-pulse" />, label: "Talking...", classes: "text-violet-600 bg-violet-50 border-violet-200" },
+    analyzing: { icon: <Loader2 className="h-3.5 w-3.5 animate-spin" />, label: "Analyzing...", classes: "text-orange-500 bg-orange-50 border-orange-200" },
     no_answer: { icon: <XCircle className="h-3.5 w-3.5" />, label: "No Answer", classes: "text-amber-600 bg-amber-50" },
     declined: { icon: <XCircle className="h-3.5 w-3.5" />, label: "Declined", classes: "text-red-500 bg-red-50" },
-    accepted: { icon: <CheckCircle2 className="h-3.5 w-3.5" />, label: "Accepted", classes: "text-emerald-600 bg-emerald-50 border-emerald-200" },
+    accepted: { icon: <CheckCircle2 className="h-3.5 w-3.5" />, label: "Accepted!", classes: "text-emerald-600 bg-emerald-50 border-emerald-200" },
   };
 
   const typeIcons: Record<string, string> = {
@@ -92,13 +197,21 @@ export default function MatchPage() {
         <p className="mt-2 text-gray-500">
           Finding shelters and kitchens that can accept your donation. Our AI agent is calling each one.
         </p>
+        {donationState.items.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {donationState.items.map((item) => (
+              <span key={item.id} className="inline-flex items-center rounded-full bg-teal-50 border border-teal-200 px-2.5 py-0.5 text-xs font-medium text-teal-700">
+                {item.name} &times; {item.quantity}
+              </span>
+            ))}
+          </div>
+        )}
       </BlurFade>
 
       {/* Mock Map */}
       <BlurFade delay={0.1}>
         <div className="mt-6 rounded-2xl overflow-hidden border border-gray-100 shadow-sm relative h-52">
           <div className="absolute inset-0 bg-gradient-to-br from-teal-100 via-teal-50 to-emerald-50">
-            {/* Map lines */}
             <div className="absolute inset-0 opacity-30">
               <div className="absolute top-8 left-12 h-1 w-32 bg-teal-300/60 rounded" />
               <div className="absolute top-14 left-6 h-0.5 w-40 bg-teal-200/50 rounded" />
@@ -107,7 +220,6 @@ export default function MatchPage() {
               <div className="absolute bottom-24 right-16 h-0.5 w-32 bg-teal-300/40 rounded" />
               <div className="absolute top-20 right-12 h-0.5 w-20 bg-teal-200/60 rounded" />
             </div>
-            {/* Map pins */}
             {[
               { top: "20%", left: "30%", active: false },
               { top: "40%", right: "20%", active: true },
@@ -125,55 +237,78 @@ export default function MatchPage() {
         </div>
       </BlurFade>
 
-      {/* Org List */}
-      <div className="mt-6 space-y-2.5">
-        {callStates.map((cs, i) => {
-          const cfg = statusConfig[cs.status];
-          return (
-            <BlurFade key={cs.org.id} delay={0.15 + i * 0.05}>
-              <motion.div
-                layout
-                className={`rounded-xl bg-white border p-4 transition-all duration-500 ${
-                  cs.status === "calling"
-                    ? "border-teal-200 shadow-md ring-1 ring-teal-100"
-                    : cs.status === "accepted"
-                    ? "border-emerald-300 shadow-lg bg-emerald-50/30"
-                    : "border-gray-100 shadow-sm"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-50 text-lg">
-                      {typeIcons[cs.org.type] || "🏠"}
-                    </div>
-                    <div>
-                      <p className="font-semibold text-gray-900 text-sm">{cs.org.name}</p>
-                      <p className="text-xs text-gray-400">{cs.org.address}</p>
-                    </div>
-                  </div>
-                  <div className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${cfg.classes}`}>
-                    {cfg.icon}
-                    {cfg.label}
-                  </div>
-                </div>
-                <AnimatePresence>
-                  {cs.message && cs.status !== "pending" && (
-                    <motion.p
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      className="mt-2 pl-13 text-xs text-gray-400 italic"
-                    >
-                      {cs.message}
-                    </motion.p>
-                  )}
-                </AnimatePresence>
-              </motion.div>
-            </BlurFade>
-          );
-        })}
-      </div>
+      {/* Loading / Error */}
+      {loadingOrgs && (
+        <div className="mt-8 flex flex-col items-center gap-3">
+          <Loader2 className="h-6 w-6 animate-spin text-teal-500" />
+          <p className="text-sm text-gray-500">Searching for nearby shelters and food banks...</p>
+        </div>
+      )}
 
-      {/* Submit / status */}
+      {error && (
+        <div className="mt-8 rounded-xl bg-red-50 border border-red-200 p-4 text-center">
+          <p className="text-sm text-red-600">{error}</p>
+        </div>
+      )}
+
+      {/* Org List */}
+      {!loadingOrgs && !error && (
+        <div className="mt-6 space-y-2.5">
+          {callStates.map((cs, i) => {
+            const cfg = statusConfig[cs.status];
+            return (
+              <BlurFade key={cs.org.id} delay={0.15 + i * 0.05}>
+                <motion.div
+                  layout
+                  className={`rounded-xl bg-white border p-4 transition-all duration-500 ${
+                    cs.status === "talking"
+                      ? "border-violet-200 shadow-md ring-1 ring-violet-100"
+                      : cs.status === "ringing"
+                      ? "border-blue-200 shadow-md ring-1 ring-blue-100"
+                      : ["calling", "dialing"].includes(cs.status)
+                      ? "border-teal-200 shadow-md ring-1 ring-teal-100"
+                      : cs.status === "analyzing"
+                      ? "border-orange-200 shadow-md ring-1 ring-orange-100"
+                      : cs.status === "accepted"
+                      ? "border-emerald-300 shadow-lg bg-emerald-50/30"
+                      : "border-gray-100 shadow-sm"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-50 text-lg">
+                        {typeIcons[cs.org.type] || "🏠"}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-gray-900 text-sm">{cs.org.name}</p>
+                        <p className="text-xs text-gray-400 truncate">{cs.org.address}</p>
+                        <p className="text-xs text-gray-300">{cs.org.distance} mi away</p>
+                      </div>
+                    </div>
+                    <div className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium shrink-0 ${cfg.classes}`}>
+                      {cfg.icon}
+                      {cfg.label}
+                    </div>
+                  </div>
+                  <AnimatePresence>
+                    {cs.message && cs.status !== "pending" && (
+                      <motion.p
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        className="mt-2 pl-13 text-xs text-gray-400 italic"
+                      >
+                        {cs.message}
+                      </motion.p>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              </BlurFade>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Status */}
       <BlurFade delay={0.45}>
         <div className="mt-8">
           {accepted ? (
@@ -187,12 +322,12 @@ export default function MatchPage() {
               </div>
               <p className="font-semibold text-gray-900">Match found! Redirecting...</p>
             </motion.div>
-          ) : (
+          ) : !loadingOrgs && !error && callStates.length > 0 ? (
             <div className="flex items-center justify-center gap-2 text-sm text-gray-400">
               <Phone className="h-4 w-4 text-teal-500" />
               AI agent is calling organizations...
             </div>
-          )}
+          ) : null}
         </div>
       </BlurFade>
     </div>

@@ -27,7 +27,7 @@ export interface Organization {
   operatingHours: string;
 }
 
-export type CallStatus = "pending" | "calling" | "no_answer" | "declined" | "accepted";
+export type CallStatus = "pending" | "calling" | "dialing" | "ringing" | "talking" | "analyzing" | "no_answer" | "declined" | "accepted";
 
 export interface OrgCallResult {
   orgId: string;
