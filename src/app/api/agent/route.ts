@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 const VAPI_API_KEY = process.env.VAPI_API_KEY || "";
 const VAPI_ASSISTANT_ID = process.env.VAPI_ASSISTANT_ID || "";
+const VAPI_PHONE_NUMBER_ID = process.env.VAPI_PHONE_NUMBER_ID || "";
 
 export async function POST(req: NextRequest) {
   if (!VAPI_API_KEY || !VAPI_ASSISTANT_ID) {
@@ -138,8 +139,13 @@ If it was a recorded message or voicemail → "voicemail"`,
       },
     };
 
-    if (phoneNumberId) {
-      callBody.phoneNumberId = phoneNumberId;
+    // Always set the phone number to call FROM
+    callBody.phoneNumberId = phoneNumberId || VAPI_PHONE_NUMBER_ID;
+    if (!callBody.phoneNumberId) {
+      return NextResponse.json(
+        { error: "No VAPI phone number configured. Set VAPI_PHONE_NUMBER_ID." },
+        { status: 500 }
+      );
     }
 
     const response = await fetch("https://api.vapi.ai/call", {

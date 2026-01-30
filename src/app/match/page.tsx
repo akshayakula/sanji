@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { BlurFade } from "@/components/ui/blur-fade";
-import { Phone, CheckCircle2, XCircle, Clock, Loader2, MapPin } from "lucide-react";
+import { Phone, PhoneCall, CheckCircle2, XCircle, Clock, Loader2, MapPin, AudioLines } from "lucide-react";
 import { getDonationState, setDonationState } from "@/lib/donation-store";
 import { Organization, CallStatus } from "@/types";
 
@@ -71,14 +71,28 @@ export default function MatchPage() {
       }
     };
 
-    const pollCallStatus = async (callId: string): Promise<{ status: string; message?: string }> => {
+    const pollCallStatus = async (callId: string, orgIndex: number): Promise<{ status: string; message?: string }> => {
       const maxAttempts = 60;
+      const inProgressStatuses = new Set(["calling", "dialing", "ringing", "talking", "analyzing"]);
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
         await new Promise((r) => setTimeout(r, 2000));
         try {
           const res = await fetch(`/api/agent/${callId}`);
           const data = await res.json();
-          if (data.status !== "calling") {
+
+          // Update UI with granular status while call is in progress
+          if (inProgressStatuses.has(data.status)) {
+            setCallStates((prev) =>
+              prev.map((s, idx) =>
+                idx === orgIndex
+                  ? { ...s, status: data.status as CallStatus, message: data.message }
+                  : s
+              )
+            );
+          }
+
+          // Terminal statuses: return result
+          if (!inProgressStatuses.has(data.status)) {
             return { status: data.status, message: data.message };
           }
         } catch {
@@ -131,7 +145,7 @@ export default function MatchPage() {
             prev.map((s, idx) => (idx === i ? { ...s, callId } : s))
           );
 
-          const result = await pollCallStatus(callId);
+          const result = await pollCallStatus(callId, i);
 
           setCallStates((prev) =>
             prev.map((s, idx) =>
@@ -162,10 +176,14 @@ export default function MatchPage() {
 
   const statusConfig: Record<CallStatus, { icon: React.ReactNode; label: string; classes: string }> = {
     pending: { icon: <Clock className="h-3.5 w-3.5" />, label: "Waiting", classes: "text-gray-400 bg-gray-50" },
-    calling: { icon: <Loader2 className="h-3.5 w-3.5 animate-spin" />, label: "Calling...", classes: "text-teal-600 bg-teal-50 border-teal-200" },
+    calling: { icon: <Loader2 className="h-3.5 w-3.5 animate-spin" />, label: "Connecting...", classes: "text-teal-600 bg-teal-50 border-teal-200" },
+    dialing: { icon: <Phone className="h-3.5 w-3.5 animate-pulse" />, label: "Dialing...", classes: "text-teal-600 bg-teal-50 border-teal-200" },
+    ringing: { icon: <PhoneCall className="h-3.5 w-3.5 animate-pulse" />, label: "Ringing...", classes: "text-blue-600 bg-blue-50 border-blue-200" },
+    talking: { icon: <AudioLines className="h-3.5 w-3.5 animate-pulse" />, label: "Talking...", classes: "text-violet-600 bg-violet-50 border-violet-200" },
+    analyzing: { icon: <Loader2 className="h-3.5 w-3.5 animate-spin" />, label: "Analyzing...", classes: "text-orange-500 bg-orange-50 border-orange-200" },
     no_answer: { icon: <XCircle className="h-3.5 w-3.5" />, label: "No Answer", classes: "text-amber-600 bg-amber-50" },
     declined: { icon: <XCircle className="h-3.5 w-3.5" />, label: "Declined", classes: "text-red-500 bg-red-50" },
-    accepted: { icon: <CheckCircle2 className="h-3.5 w-3.5" />, label: "Accepted", classes: "text-emerald-600 bg-emerald-50 border-emerald-200" },
+    accepted: { icon: <CheckCircle2 className="h-3.5 w-3.5" />, label: "Accepted!", classes: "text-emerald-600 bg-emerald-50 border-emerald-200" },
   };
 
   const typeIcons: Record<string, string> = {
@@ -243,8 +261,14 @@ export default function MatchPage() {
                 <motion.div
                   layout
                   className={`rounded-xl bg-white border p-4 transition-all duration-500 ${
-                    cs.status === "calling"
+                    cs.status === "talking"
+                      ? "border-violet-200 shadow-md ring-1 ring-violet-100"
+                      : cs.status === "ringing"
+                      ? "border-blue-200 shadow-md ring-1 ring-blue-100"
+                      : ["calling", "dialing"].includes(cs.status)
                       ? "border-teal-200 shadow-md ring-1 ring-teal-100"
+                      : cs.status === "analyzing"
+                      ? "border-orange-200 shadow-md ring-1 ring-orange-100"
                       : cs.status === "accepted"
                       ? "border-emerald-300 shadow-lg bg-emerald-50/30"
                       : "border-gray-100 shadow-sm"
