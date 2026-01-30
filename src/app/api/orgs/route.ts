@@ -2,12 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
 
+// 20 miles in meters
+const SEARCH_RADIUS = 32187;
+
 // Calculate distance between two lat/lng points in miles
 function haversineDistance(
   lat1: number, lng1: number,
   lat2: number, lng2: number
 ): number {
-  const R = 3958.8; // Earth radius in miles
+  const R = 3958.8;
   const dLat = (lat2 - lat1) * (Math.PI / 180);
   const dLng = (lng2 - lng1) * (Math.PI / 180);
   const a =
@@ -19,12 +22,74 @@ function haversineDistance(
   return Math.round(R * c * 10) / 10;
 }
 
-// Determine org type from Google Places types
 function inferOrgType(types: string[]): "shelter" | "kitchen" | "fridge" | "foodbank" {
-  if (types.some((t) => t.includes("food_bank") || t.includes("food bank"))) return "foodbank";
-  if (types.some((t) => t.includes("meal") || t.includes("kitchen") || t.includes("restaurant"))) return "kitchen";
-  if (types.some((t) => t.includes("shelter") || t.includes("homeless") || t.includes("social_services"))) return "shelter";
-  return "shelter"; // default
+  const joined = types.join(" ").toLowerCase();
+  if (joined.includes("food_bank") || joined.includes("food bank")) return "foodbank";
+  if (joined.includes("meal") || joined.includes("kitchen") || joined.includes("restaurant")) return "kitchen";
+  if (joined.includes("fridge")) return "fridge";
+  return "shelter";
+}
+
+interface PlaceResult {
+  id: string;
+  name: string;
+  address: string;
+  lat: number;
+  lng: number;
+  phone: string;
+  types: string[];
+  distance: number;
+}
+
+async function searchPlaces(
+  query: string,
+  lat: number,
+  lng: number
+): Promise<PlaceResult[]> {
+  const response = await fetch("https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
+      "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.internationalPhoneNumber,places.types",
+    },
+    body: JSON.stringify({
+      textQuery: query,
+      locationBias: {
+        circle: {
+          center: { latitude: lat, longitude: lng },
+          radius: SEARCH_RADIUS,
+        },
+      },
+      pageSize: 10,
+    }),
+  });
+
+  const data = await response.json();
+
+  if (!data.places) return [];
+
+  return data.places.map((p: {
+    id: string;
+    displayName?: { text: string };
+    formattedAddress?: string;
+    location?: { latitude: number; longitude: number };
+    internationalPhoneNumber?: string;
+    types?: string[];
+  }) => ({
+    id: p.id,
+    name: p.displayName?.text || "Unknown",
+    address: p.formattedAddress || "",
+    lat: p.location?.latitude || 0,
+    lng: p.location?.longitude || 0,
+    phone: p.internationalPhoneNumber || "",
+    types: p.types || [],
+    distance: haversineDistance(
+      lat, lng,
+      p.location?.latitude || 0,
+      p.location?.longitude || 0
+    ),
+  }));
 }
 
 export async function POST(req: NextRequest) {
@@ -45,99 +110,45 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Use Google Places Text Search to find nearby shelters, food banks, kitchens
-    const searchQueries = [
-      "homeless shelter",
-      "food bank",
-      "community kitchen",
-      "soup kitchen",
-    ];
+    // Search with a broad query to capture shelters, food banks, kitchens, pantries
+    const results = await searchPlaces(
+      "homeless shelter OR food bank OR soup kitchen OR food pantry",
+      lat,
+      lng
+    );
 
-    const allPlaces: Map<string, {
-      id: string;
-      name: string;
-      address: string;
-      lat: number;
-      lng: number;
-      phone: string;
-      types: string[];
-      distance: number;
-    }> = new Map();
-
-    // Search each query type
-    for (const query of searchQueries) {
-      const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&location=${lat},${lng}&radius=8000&key=${GOOGLE_MAPS_API_KEY}`;
-
-      const res = await fetch(url);
-      const data = await res.json();
-
-      if (data.results) {
-        for (const place of data.results) {
-          if (allPlaces.has(place.place_id)) continue;
-
-          const placeLat = place.geometry?.location?.lat;
-          const placeLng = place.geometry?.location?.lng;
-          if (!placeLat || !placeLng) continue;
-
-          allPlaces.set(place.place_id, {
-            id: place.place_id,
-            name: place.name,
-            address: place.formatted_address || "",
-            lat: placeLat,
-            lng: placeLng,
-            phone: "", // Text Search doesn't return phone; we'll get it from Place Details
-            types: place.types || [],
-            distance: haversineDistance(lat, lng, placeLat, placeLng),
-          });
-        }
-      }
+    if (results.length === 0) {
+      return NextResponse.json({ organizations: [] });
     }
 
-    // Sort by distance, take closest 5
-    const sorted = Array.from(allPlaces.values())
+    // Deduplicate by place ID, sort by distance, take closest 5
+    const seen = new Set<string>();
+    const unique = results.filter((p) => {
+      if (seen.has(p.id)) return false;
+      seen.add(p.id);
+      return true;
+    });
+
+    const closest = unique
       .sort((a, b) => a.distance - b.distance)
       .slice(0, 5);
 
-    // Fetch phone numbers for the top 5 via Place Details
-    const orgsWithPhone = await Promise.all(
-      sorted.map(async (place) => {
-        let phone = "";
-        try {
-          const detailUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.id}&fields=formatted_phone_number,international_phone_number,opening_hours&key=${GOOGLE_MAPS_API_KEY}`;
-          const detailRes = await fetch(detailUrl);
-          const detailData = await detailRes.json();
-          phone = detailData.result?.international_phone_number || detailData.result?.formatted_phone_number || "";
-          const hours = detailData.result?.opening_hours?.weekday_text;
-          return {
-            id: place.id,
-            name: place.name,
-            type: inferOrgType(place.types),
-            address: place.address,
-            lat: place.lat,
-            lng: place.lng,
-            phone: phone.replace(/[\s()-]/g, ""), // normalize to digits/+
-            distance: place.distance,
-            acceptsCategories: ["food", "beverage", "supply"],
-            operatingHours: hours ? hours[0] : "Call for hours",
-          };
-        } catch {
-          return {
-            id: place.id,
-            name: place.name,
-            type: inferOrgType(place.types),
-            address: place.address,
-            lat: place.lat,
-            lng: place.lng,
-            phone,
-            distance: place.distance,
-            acceptsCategories: ["food", "beverage", "supply"],
-            operatingHours: "Call for hours",
-          };
-        }
-      })
-    );
+    // Map to our Organization shape
+    const organizations = closest.map((place) => ({
+      id: place.id,
+      name: place.name,
+      type: inferOrgType(place.types),
+      address: place.address,
+      lat: place.lat,
+      lng: place.lng,
+      // Normalize phone: remove spaces, parens, dashes for VAPI E.164 format
+      phone: place.phone.replace(/[\s()\-]/g, ""),
+      distance: place.distance,
+      acceptsCategories: ["food", "beverage", "supply"],
+      operatingHours: "Call for hours",
+    }));
 
-    return NextResponse.json({ organizations: orgsWithPhone });
+    return NextResponse.json({ organizations });
   } catch (err) {
     console.error("Orgs search error:", err);
     return NextResponse.json({ error: "Failed to search organizations" }, { status: 500 });

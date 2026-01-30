@@ -158,7 +158,7 @@ export default function DonatePage() {
                 <img
                   src={imagePreview}
                   alt="Preview"
-                  className="h-[280px] w-full object-cover"
+                  className="w-full max-h-[400px] object-contain"
                 />
                 <button
                   onClick={() => { setImagePreview(null); setAnalyzed(false); setItems([]); }}

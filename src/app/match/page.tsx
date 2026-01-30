@@ -90,6 +90,16 @@ export default function MatchPage() {
 
     const callOrgsSequentially = async (orgs: Organization[]) => {
       for (let i = 0; i < orgs.length; i++) {
+        // Skip orgs without phone numbers
+        if (!orgs[i].phone || orgs[i].phone.length < 8) {
+          setCallStates((prev) =>
+            prev.map((s, idx) =>
+              idx === i ? { ...s, status: "no_answer", message: "No phone number available" } : s
+            )
+          );
+          continue;
+        }
+
         // Mark as calling
         setCallStates((prev) =>
           prev.map((s, idx) => (idx === i ? { ...s, status: "calling" } : s))
