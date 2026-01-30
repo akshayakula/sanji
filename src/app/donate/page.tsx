@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+
 import { BorderBeam } from "@/components/ui/border-beam";
 import { BlurFade } from "@/components/ui/blur-fade";
 import {
@@ -20,7 +20,7 @@ export default function DonatePage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [address, setAddress] = useState("");
   const [selectedPlace, setSelectedPlace] = useState<PlaceResult | null>(null);
-  const [pickupInstructions, setPickupInstructions] = useState("");
+
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzed, setAnalyzed] = useState(false);
   const [items, setItems] = useState<DonationItem[]>([]);
@@ -80,13 +80,11 @@ export default function DonatePage() {
       lat: selectedPlace?.lat ?? 37.7849,
       lng: selectedPlace?.lng ?? -122.4094,
       placeId: selectedPlace?.placeId,
-      pickupInstructions: pickupInstructions.trim() || undefined,
     };
     setDonationState({
       imagePreview,
       items,
       location,
-      pickupInstructions: pickupInstructions.trim(),
     });
     router.push("/donate/review");
   };
@@ -268,20 +266,6 @@ export default function DonatePage() {
               ) : (
                 <FallbackMap address={address || undefined} className="h-48" />
               )}
-
-              <div>
-                <label className="text-sm font-semibold text-gray-900">
-                  Pickup Instructions{" "}
-                  <span className="text-gray-400 font-normal">(optional)</span>
-                </label>
-                <Textarea
-                  placeholder="e.g., Ring buzzer #3, items in lobby..."
-                  value={pickupInstructions}
-                  onChange={(e) => setPickupInstructions(e.target.value)}
-                  className="mt-2 rounded-xl border-gray-200 focus:border-teal-400 focus:ring-teal-400 resize-none"
-                  rows={3}
-                />
-              </div>
 
               {/* Distance badge */}
               {address && (

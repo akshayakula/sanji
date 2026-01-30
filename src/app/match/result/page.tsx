@@ -5,13 +5,15 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { BorderBeam } from "@/components/ui/border-beam";
-import { CheckCircle2, Truck, MapPin, Clock, ArrowRight, Loader2, Navigation } from "lucide-react";
+import { CheckCircle2, Truck, MapPin, Clock, ArrowRight, Loader2, Navigation, MessageSquare } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { getDonationState, setDonationState } from "@/lib/donation-store";
 
 export default function MatchResultPage() {
   const router = useRouter();
   const [state] = useState(getDonationState());
   const [dispatching, setDispatching] = useState(false);
+  const [pickupInstructions, setPickupInstructions] = useState("");
 
   useEffect(() => {
     if (!state.matchedOrg) {
@@ -22,6 +24,7 @@ export default function MatchResultPage() {
   const handleDispatch = async () => {
     setDispatching(true);
     try {
+      setDonationState({ pickupInstructions: pickupInstructions.trim() });
       const res = await fetch("/api/delivery", { method: "POST" });
       const data = await res.json();
       setDonationState({ deliveryId: data.id });
@@ -126,6 +129,26 @@ export default function MatchResultPage() {
               </div>
             </div>
           )}
+        </div>
+      </BlurFade>
+
+      {/* Pickup Instructions */}
+      <BlurFade delay={0.35}>
+        <div className="mt-6 rounded-2xl bg-white border border-gray-100 p-5 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <MessageSquare className="h-4 w-4 text-teal-600" />
+            <label className="text-sm font-semibold text-gray-900">
+              Pickup Instructions{" "}
+              <span className="text-gray-400 font-normal">(optional)</span>
+            </label>
+          </div>
+          <Textarea
+            placeholder="e.g., Ring buzzer #3, items in lobby..."
+            value={pickupInstructions}
+            onChange={(e) => setPickupInstructions(e.target.value)}
+            className="rounded-xl border-gray-200 focus:border-teal-400 focus:ring-teal-400 resize-none"
+            rows={3}
+          />
         </div>
       </BlurFade>
 
